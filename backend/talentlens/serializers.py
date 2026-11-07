@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from ..db import loads_list
+from .db import loads_list
 
 SUMMARY_COLUMNS = (
     "id, rel_path, filename, ext, status, error, name, email, phone, location, city, country, "

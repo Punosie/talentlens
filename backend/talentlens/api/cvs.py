@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from ..db import loads_list
+from ..serializers import SUMMARY_COLUMNS, cv_summary
 from ..state import AppState
 from ..storage import DuplicateUpload, UploadRejected
 from . import get_state
-from .serializers import SUMMARY_COLUMNS, cv_summary
 
 router = APIRouter(prefix="/api/cvs", tags=["cvs"])
 State = Annotated[AppState, Depends(get_state)]

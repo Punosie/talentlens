@@ -1,12 +1,15 @@
 """The enrichment interface: turns resume text into structured fields and an embedding.
 
-Phase 1 ships NullEnricher. The AI implementation lives in talentlens.ai.
+Extraction runs in two stages:
+1. `extract(text, filename, llm_json=None)`: fast, rule-based, run for every file.
+2. An optional LLM pass produces `llm_json`, which is stored and merged in by calling
+   `extract` again with it. The merge is deterministic, so a re-index never needs the LLM.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -31,16 +34,28 @@ class CVFields:
 class Enricher(Protocol):
     embed_model_name: str
 
-    def extract(self, text: str, filename: str) -> CVFields: ...
+    def extract(
+        self, text: str, filename: str, llm_json: dict[str, Any] | None = None
+    ) -> CVFields: ...
 
     def embed_documents(self, texts: list[str]) -> np.ndarray | None: ...
+
+    def llm_available(self) -> bool: ...
+
+    def llm_extract(self, text: str, filename: str) -> dict[str, Any]: ...
 
 
 class NullEnricher:
     embed_model_name = "none"
 
-    def extract(self, text: str, filename: str) -> CVFields:
+    def extract(self, text: str, filename: str, llm_json: dict[str, Any] | None = None) -> CVFields:
         return CVFields(extractor="none")
 
     def embed_documents(self, texts: list[str]) -> np.ndarray | None:
         return None
+
+    def llm_available(self) -> bool:
+        return False
+
+    def llm_extract(self, text: str, filename: str) -> dict[str, Any]:
+        raise RuntimeError("No LLM configured")

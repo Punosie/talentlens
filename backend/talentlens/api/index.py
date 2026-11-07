@@ -41,6 +41,13 @@ def refresh(st: State, full: bool = False) -> dict[str, Any]:
     return status_payload(st)
 
 
+@router.post("/ai")
+def set_ai(st: State, paused: bool) -> dict[str, Any]:
+    """Pause or resume the background AI enhancement stage."""
+    st.queue.set_ai_paused(paused)
+    return status_payload(st)
+
+
 @router.get("/events")
 async def events(request: Request, st: State) -> StreamingResponse:
     """Server-Sent Events stream of index status (each change, plus a 15 s heartbeat)."""

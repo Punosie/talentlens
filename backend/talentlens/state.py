@@ -6,12 +6,17 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .ai import AIEnricher, build_embedder, build_llm, build_reranker
+from .ai.embed import Embedder
+from .ai.llm import LLM
+from .ai.rerank import Reranker
 from .config import Settings
 from .db import Database
-from .enrich import Enricher, NullEnricher
+from .enrich import Enricher
 from .indexer import Indexer
 from .jobs import IndexQueue
 from .provenance import Provenance
+from .search import SearchEngine
 from .storage import CVStore
 from .watcher import FolderWatcher
 
@@ -23,9 +28,13 @@ class AppState:
     settings: Settings
     db: Database
     store: CVStore
+    llm: LLM
+    embedder: Embedder
+    reranker: Reranker
     enricher: Enricher
     indexer: Indexer
     queue: IndexQueue
+    search: SearchEngine
     provenance: Provenance
     watcher: FolderWatcher | None = None
     extras: dict[str, Any] = field(default_factory=dict)
@@ -35,18 +44,25 @@ class AppState:
         settings.ensure_dirs()
         db = Database(settings.db_path)
         store = CVStore(settings.cv_dir)
-        enricher = enricher or NullEnricher()
+        llm = build_llm(settings)
+        embedder = build_embedder(settings)
+        enricher = enricher or AIEnricher(llm, embedder)
         indexer = Indexer(
             db, store, enricher, ocr_min_chars_per_page=settings.ocr_min_chars_per_page
         )
-        queue = IndexQueue(indexer)
+        search = SearchEngine(db, embedder)
+        indexer.listeners.append(search.on_index_changed)
         return cls(
             settings=settings,
             db=db,
             store=store,
+            llm=llm,
+            embedder=embedder,
+            reranker=build_reranker(settings),
             enricher=enricher,
             indexer=indexer,
-            queue=queue,
+            queue=IndexQueue(indexer),
+            search=search,
             provenance=Provenance(settings.resolved_cv_index_csv()),
         )
 

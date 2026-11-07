@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .api import cvs as cvs_api
 from .api import index as index_api
+from .api import search as search_api
 from .config import REPO_ROOT, Settings, get_settings
 from .enrich import Enricher
 from .state import AppState
@@ -71,12 +72,13 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
             "version": __version__,
             "cv_dir": str(settings.cv_dir),
             "cv_dir_exists": st.store.exists(),
-            "llm": st.extras.get("llm_status", {"mode": settings.llm}),
-            "embed_model": st.enricher.embed_model_name,
+            "llm": st.llm.status(),
+            "embed_model": st.embedder.model_name,
         }
 
     app.include_router(cvs_api.router)
     app.include_router(index_api.router)
+    app.include_router(search_api.router)
 
     _mount_frontend(app, FRONTEND_DIST)
     return app

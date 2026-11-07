@@ -51,12 +51,19 @@ CREATE TABLE IF NOT EXISTS cvs (
     summary     TEXT,
     embedding   BLOB,
     embed_model TEXT,
+    llm_json    TEXT,                         -- raw LLM extraction (merged deterministically)
+    llm_sha     TEXT,                         -- sha256 of the content llm_json belongs to
+    llm_at      TEXT,
+    llm_attempts INTEGER NOT NULL DEFAULT 0,
+    llm_error   TEXT,
     added_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     indexed_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_cvs_sha ON cvs(sha256);
 CREATE INDEX IF NOT EXISTS ix_cvs_status ON cvs(status);
 CREATE INDEX IF NOT EXISTS ix_cvs_years ON cvs(years_exp);
+CREATE INDEX IF NOT EXISTS ix_cvs_country ON cvs(country);
+CREATE INDEX IF NOT EXISTS ix_cvs_city ON cvs(city);
 
 CREATE TABLE IF NOT EXISTS cv_skills (
     cv_id INTEGER NOT NULL REFERENCES cvs(id) ON DELETE CASCADE,

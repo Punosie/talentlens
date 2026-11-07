@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class IndexStatus:
-    state: str = "idle"  # idle | queued | running
+    state: str = "idle"  # idle | queued | running | enhancing
     kind: str | None = None  # incremental | full
     reason: str | None = None
     total: int = 0
@@ -30,6 +30,9 @@ class IndexStatus:
     last_report: dict[str, object] | None = None
     version: int = 0
     errors: list[dict[str, str]] = field(default_factory=list)
+    ai_pending: int = 0
+    ai_paused: bool = False
+    ai_last: dict[str, int] | None = None
 
 
 class IndexQueue:
@@ -40,6 +43,7 @@ class IndexQueue:
         self._pending_reason: str | None = None
         self._status = IndexStatus()
         self._stop = False
+        self.ai_paused = False
         self._thread = threading.Thread(target=self._loop, name="talentlens-indexer", daemon=True)
 
     # --- lifecycle -------------------------------------------------------
@@ -131,10 +135,55 @@ class IndexQueue:
                 log.exception("Index job crashed")
                 report_dict = {"fatal": str(e)}
             with self._cv:
+                # state stays "running" until _enhance() decides what happens next, so
+                # observers never see a transient "idle" between the two stages
                 self._update(
-                    state="queued" if self._pending else "idle",
                     current="",
                     finished_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     last_report=report_dict,
                     errors=list(report_dict.get("errors", []))[:50],  # type: ignore[arg-type]
                 )
+            self._enhance()
+
+    def _finish(self, **changes: object) -> None:
+        # caller holds self._cv
+        self._update(state="queued" if self._pending else "idle", current="", **changes)
+
+    def _enhance(self) -> None:
+        """Stage 2: LLM refinement. Yields as soon as a new index request arrives."""
+        pending = self._safe_pending_count()
+        with self._cv:
+            if self._pending is not None or self._stop or self.ai_paused or pending == 0:
+                self._finish(ai_pending=pending)
+                return
+            self._update(state="enhancing", total=pending, done=0, current="")
+
+        def should_stop() -> bool:
+            with self._cv:
+                return self._pending is not None or self._stop or self.ai_paused
+
+        try:
+            result = self.indexer.refine_pending(should_stop=should_stop, progress=self._progress)
+        except Exception:
+            log.exception("AI enhancement crashed")
+            result = {}
+        pending = self._safe_pending_count()
+        with self._cv:
+            self._finish(ai_pending=pending, ai_last=result)
+
+    def _safe_pending_count(self) -> int:
+        try:
+            return self.indexer.pending_llm_count()
+        except Exception:
+            return 0
+
+    def set_ai_paused(self, paused: bool) -> IndexStatus:
+        with self._cv:
+            self.ai_paused = paused
+            self._update(ai_paused=paused)
+            if not paused and self._status.state == "idle":
+                # kick the worker so pending AI work resumes
+                self._pending = self._pending or "incremental"
+                self._pending_reason = "resume AI"
+            self._cv.notify_all()
+            return IndexStatus(**asdict(self._status))

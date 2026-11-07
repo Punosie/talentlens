@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -194,11 +195,164 @@ class Indexer:
             self._mark(f, "unreadable", "Document contains no readable text")
             return "unreadable"
 
-        fields = self.enricher.extract(parsed.text, f.path.name)
-        emb = self.enricher.embed_documents([embedding_text(fields, parsed.text)])
-        blob = emb[0].astype(np.float32).tobytes() if emb is not None and len(emb) else None
+        llm_json = self._stored_llm_json(f.rel_path, sha)
+        fields = self.enricher.extract(parsed.text, f.path.name, llm_json)
+        blob = self._embed(fields, parsed.text)
         self._write(f, sha, parsed, fields, blob)
         return "indexed"
+
+    def _embed(self, fields: CVFields, text: str) -> bytes | None:
+        emb = self.enricher.embed_documents([embedding_text(fields, text)])
+        return emb[0].astype(np.float32).tobytes() if emb is not None and len(emb) else None
+
+    def _stored_llm_json(self, rel_path: str, sha: str) -> dict[str, Any] | None:
+        with self.db.connect() as conn:
+            row = conn.execute(
+                "SELECT llm_json, llm_sha FROM cvs WHERE rel_path=?", (rel_path,)
+            ).fetchone()
+        if row and row["llm_json"] and row["llm_sha"] == sha:
+            try:
+                return json.loads(row["llm_json"])
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    # ------------------------------------------------------------------
+    # Stage 2: LLM refinement (slow; runs in the background, newest first)
+    # ------------------------------------------------------------------
+    def pending_llm_count(self) -> int:
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM cvs WHERE status='indexed' "
+                "AND (llm_sha IS NULL OR llm_sha != sha256) AND llm_attempts < 2"
+            ).fetchone()[0]
+
+    def refine_pending(
+        self,
+        *,
+        should_stop: Callable[[], bool],
+        progress: ProgressFn | None = None,
+    ) -> dict[str, int]:
+        """Run LLM extraction for every indexed CV that lacks it. Stops early when asked."""
+        done = failed = 0
+        if not self.enricher.llm_available():
+            return {"refined": 0, "failed": 0, "skipped": self.pending_llm_count()}
+        with self.db.connect() as conn:
+            ids = [
+                r["id"]
+                for r in conn.execute(
+                    "SELECT id FROM cvs WHERE status='indexed' "
+                    "AND (llm_sha IS NULL OR llm_sha != sha256) AND llm_attempts < 2 "
+                    "ORDER BY added_at DESC, id DESC"
+                )
+            ]
+        total = len(ids)
+        for i, cv_id in enumerate(ids):
+            if should_stop():
+                break
+            with self.db.connect() as conn:
+                row = conn.execute(
+                    "SELECT id, filename, text, sha256 FROM cvs WHERE id=?", (cv_id,)
+                ).fetchone()
+            if row is None:
+                continue
+            if progress:
+                progress(i, total, row["filename"])
+            try:
+                llm_json = self.enricher.llm_extract(row["text"] or "", row["filename"])
+            except Exception as e:
+                log.warning("LLM extraction failed for %s: %s", row["filename"], e)
+                failed += 1
+                with self.db.write() as conn:
+                    conn.execute(
+                        "UPDATE cvs SET llm_attempts=llm_attempts+1, llm_error=? WHERE id=?",
+                        (str(e)[:300], cv_id),
+                    )
+                if not self.enricher.llm_available():
+                    break  # Ollama went away; try again on the next pass
+                continue
+            fields = self.enricher.extract(row["text"] or "", row["filename"], llm_json)
+            blob = self._embed(fields, row["text"] or "")
+            with self.db.write() as conn:
+                cur = conn.execute(
+                    "UPDATE cvs SET llm_json=?, llm_sha=?, llm_at=?, llm_error=NULL "
+                    "WHERE id=? AND sha256=?",
+                    (json.dumps(llm_json), row["sha256"], _now(), cv_id, row["sha256"]),
+                )
+                if cur.rowcount:
+                    self._apply_fields(
+                        conn, cv_id, fields, blob, row["text"] or "", row["filename"]
+                    )
+            done += 1
+            if done % 5 == 0:
+                self._notify()
+        if progress:
+            progress(total, total, "")
+        if done:
+            self._notify()
+        return {"refined": done, "failed": failed, "skipped": 0}
+
+    def _apply_fields(
+        self,
+        conn: Any,
+        cv_id: int,
+        fields: CVFields,
+        blob: bytes | None,
+        text: str,
+        filename: str,
+    ) -> None:
+        conn.execute(
+            """UPDATE cvs SET extractor=?, name=?, email=?, phone=?, location=?, city=?,
+                 country=?, years_exp=?, title=?, skills=?, domains=?, education=?, summary=?,
+                 embedding=?, embed_model=? WHERE id=?""",
+            (
+                fields.extractor,
+                fields.name,
+                fields.email,
+                fields.phone,
+                fields.location,
+                fields.city,
+                fields.country,
+                fields.years_exp,
+                fields.title,
+                json.dumps(fields.skills),
+                json.dumps(fields.domains),
+                json.dumps(fields.education),
+                fields.summary,
+                blob,
+                self.enricher.embed_model_name if blob else None,
+                cv_id,
+            ),
+        )
+        self._write_facets(conn, cv_id, fields, text, filename)
+
+    def _write_facets(
+        self, conn: Any, cv_id: int, fields: CVFields, text: str, filename: str
+    ) -> None:
+        conn.execute("DELETE FROM cv_skills WHERE cv_id=?", (cv_id,))
+        conn.execute("DELETE FROM cv_domains WHERE cv_id=?", (cv_id,))
+        conn.executemany(
+            "INSERT OR IGNORE INTO cv_skills(cv_id, skill) VALUES (?,?)",
+            [(cv_id, s) for s in fields.skills],
+        )
+        conn.executemany(
+            "INSERT OR IGNORE INTO cv_domains(cv_id, domain) VALUES (?,?)",
+            [(cv_id, d) for d in fields.domains],
+        )
+        conn.execute("DELETE FROM cv_fts WHERE rowid=?", (cv_id,))
+        conn.execute(
+            "INSERT INTO cv_fts(rowid, name, title, skills, domains, location, body) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (
+                cv_id,
+                fields.name or Path(filename).stem,
+                fields.title or "",
+                " ; ".join(fields.skills),
+                " ; ".join(fields.domains),
+                fields.location or "",
+                text,
+            ),
+        )
 
     def _write(self, f: FileInfo, sha: str, parsed, fields: CVFields, blob: bytes | None) -> None:
         values = {
@@ -241,30 +395,9 @@ class Indexer:
                 f"ON CONFLICT(rel_path) DO UPDATE SET {updates}",
                 tuple(values.values()),
             )
-            cv_id = conn.execute("SELECT id FROM cvs WHERE rel_path=?", (f.rel_path,)).fetchone()[
-                "id"
-            ]
-            conn.execute("DELETE FROM cv_skills WHERE cv_id=?", (cv_id,))
-            conn.execute("DELETE FROM cv_domains WHERE cv_id=?", (cv_id,))
-            conn.executemany(
-                "INSERT OR IGNORE INTO cv_skills(cv_id, skill) VALUES (?,?)",
-                [(cv_id, s) for s in fields.skills],
-            )
-            conn.executemany(
-                "INSERT OR IGNORE INTO cv_domains(cv_id, domain) VALUES (?,?)",
-                [(cv_id, d) for d in fields.domains],
-            )
-            conn.execute("DELETE FROM cv_fts WHERE rowid=?", (cv_id,))
-            conn.execute(
-                "INSERT INTO cv_fts(rowid, name, title, skills, domains, location, body) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (
-                    cv_id,
-                    fields.name or Path(f.path.name).stem,
-                    fields.title or "",
-                    " ; ".join(fields.skills),
-                    " ; ".join(fields.domains),
-                    fields.location or "",
-                    parsed.text,
-                ),
-            )
+            row = conn.execute(
+                "SELECT id, llm_sha FROM cvs WHERE rel_path=?", (f.rel_path,)
+            ).fetchone()
+            if row["llm_sha"] != sha:  # new content: give the LLM fresh attempts
+                conn.execute("UPDATE cvs SET llm_attempts=0 WHERE id=?", (row["id"],))
+            self._write_facets(conn, row["id"], fields, parsed.text, f.path.name)
