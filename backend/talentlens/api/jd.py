@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -176,12 +177,18 @@ def _csv(results: list[dict[str, Any]]) -> str:
     return buf.getvalue()
 
 
+def content_disposition(filename: str) -> str:
+    """RFC 6266 / 5987: ASCII fallback plus a UTF-8 encoded name for non-Latin characters."""
+    ascii_name = filename.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
 def _csv_response(results: list[dict[str, Any]], name: str) -> StreamingResponse:
     fname = safe_filename(f"{name}.csv")
     return StreamingResponse(
         iter(["﻿" + _csv(results)]),  # BOM so Excel opens UTF-8 correctly
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={"Content-Disposition": content_disposition(fname)},
     )
 
 

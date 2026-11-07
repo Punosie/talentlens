@@ -1,13 +1,17 @@
 {
-  "name": "frontend",
+  "name": "talentlens-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:ui": "npm run build && playwright test --ui",
+    "test:e2e:real": "playwright test e2e/real-ai.spec.ts"
   },
   "dependencies": {
     "@fontsource-variable/schibsted-grotesk": "^5.3.0",

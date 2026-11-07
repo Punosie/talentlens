@@ -166,6 +166,15 @@ def test_same_person_collapses(indexed: TestClient, settings: Settings) -> None:
     assert alices[0]["other_files"][0]["filename"].startswith("Alice_Example_Resume")
 
 
+def test_content_disposition_handles_unicode_names() -> None:
+    from talentlens.api.jd import content_disposition
+
+    h = content_disposition("Telecom RAN – Riyadh.csv")
+    assert h.startswith('attachment; filename="Telecom RAN _ Riyadh.csv"')
+    assert "filename*=UTF-8''Telecom%20RAN%20%E2%80%93%20Riyadh.csv" in h
+    h.encode("latin-1")  # must be a valid HTTP header value
+
+
 def test_shortlist_requires_something(indexed: TestClient) -> None:
     r = indexed.post("/api/shortlist", json={"requirements": {}, "jd_text": ""})
     assert r.status_code == 400
