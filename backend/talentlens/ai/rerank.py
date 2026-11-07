@@ -31,7 +31,11 @@ class FastReranker:
                 if self._model is None:
                     from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-                    self._model = TextCrossEncoder(self.model_name, cache_dir=str(self.cache_dir))
+                    from .embed import load_cached_first
+
+                    self._model = load_cached_first(
+                        TextCrossEncoder, self.model_name, self.cache_dir
+                    )
         return self._model
 
     def scores(self, query: str, docs: list[str]) -> np.ndarray:

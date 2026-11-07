@@ -3,12 +3,29 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 import re
 import threading
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
+
+# Windows without Developer Mode cannot symlink; the HF cache copes, so silence the warning.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+log = logging.getLogger(__name__)
+
+
+def load_cached_first(cls: Any, model_name: str, cache_dir: Path) -> Any:
+    """Load a fastembed model from the local cache without touching the network (works
+    offline). Only if it is not cached yet, download it."""
+    try:
+        return cls(model_name, cache_dir=str(cache_dir), local_files_only=True)
+    except Exception:
+        log.info("Model %s not cached yet; downloading", model_name)
+        return cls(model_name, cache_dir=str(cache_dir))
+
 
 # bge-*-v1.5 retrieval works best with this instruction on the QUERY side only
 BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
@@ -43,7 +60,7 @@ class FastEmbedder:
                 if self._model is None:
                     from fastembed import TextEmbedding
 
-                    self._model = TextEmbedding(self.model_name, cache_dir=str(self.cache_dir))
+                    self._model = load_cached_first(TextEmbedding, self.model_name, self.cache_dir)
         return self._model
 
     def embed_documents(self, texts: list[str]) -> np.ndarray:

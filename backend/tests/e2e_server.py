@@ -66,15 +66,27 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
     ap.add_argument("--port", type=int, default=8799)
+    ap.add_argument(
+        "--demo", action="store_true", help="fictional demo library + real embeddings (screenshots)"
+    )
     args = ap.parse_args()
     root = Path(args.root)
     build(root)
+    if args.demo:
+        from tests.demo_data import DEMO_RESUMES
+
+        for name, text in DEMO_RESUMES.items():
+            make_pdf(root / "cvs" / "files" / name, text)
+        # reuse already-downloaded models instead of fetching them again
+        cached = Settings(_env_file=None).model_cache_dir
+        if cached.is_dir():
+            shutil.copytree(cached, root / "appdata" / "models", dirs_exist_ok=True)
     settings = Settings(
         cv_dir=root / "cvs" / "files",
         data_dir=root / "appdata",
         port=args.port,
         llm="mock",
-        embeddings="mock",
+        embeddings="fastembed" if args.demo else "mock",
         watch=True,
         scan_on_startup=True,
         _env_file=None,
