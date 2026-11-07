@@ -1,0 +1,62 @@
+# --- Candidate data: NEVER commit -------------------------------------------
+files/
+cvs/
+*.pdf
+*.doc
+*.docx
+*.rtf
+*.odt
+*.csv
+CV_COLLECTION.md
+# Test fixtures are generated at runtime; allow the tiny committed samples only
+!backend/tests/fixtures/**/*.txt
+
+# --- Secrets / local config -------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- App data (lives in %LOCALAPPDATA%\TalentLens by default) ---------------
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+logs/
+
+# --- Python ----------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+
+# --- Node / frontend --------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/.vite/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# --- Graphify output --------------------------------------------------------
+graphify-out/
+
+# --- OS / editor ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.log
+
+# --- Claude Code local settings ----------------------------------------------
+.claude/settings.local.json
