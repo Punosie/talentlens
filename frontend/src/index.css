@@ -1,0 +1,124 @@
+@import '@fontsource-variable/schibsted-grotesk';
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens: "highlighter on paper" */
+:root {
+  --paper: #f6f7f4;
+  --surface: #ffffff;
+  --sunken: #eef0ec;
+  --ink: #0e3b3c;
+  --ink-strong: #0a2c2d;
+  --ink-soft: #d6e5e3;
+  --on-ink: #f6f7f4;
+  --text: #1d2528;
+  --muted: #5e6b6d;
+  --line: #d8ddda;
+  --line-strong: #b9c1bd;
+  --mark: #f3d54e;
+  --mark-soft: #faf0b8;
+  --danger: #a3361f;
+  --ok: #2f6b3a;
+  --seg-semantic: #0e3b3c;
+  --seg-must: #2f7a74;
+  --seg-nice: #7fb3ac;
+  --seg-experience: #c9a227;
+  --seg-domain: #8a6f9e;
+  --seg-location: #b7795a;
+}
+
+.dark {
+  --paper: #0f1517;
+  --surface: #151d20;
+  --sunken: #11181a;
+  --ink: #7cc3b8;
+  --ink-strong: #a5dcd2;
+  --ink-soft: #1d3434;
+  --on-ink: #0f1517;
+  --text: #e4ebe8;
+  --muted: #93a19e;
+  --line: #263236;
+  --line-strong: #39484c;
+  --mark: #e5c643;
+  --mark-soft: #4a4116;
+  --danger: #ef8a6f;
+  --ok: #8fd19e;
+  --seg-semantic: #7cc3b8;
+  --seg-must: #4fa59b;
+  --seg-nice: #2f6c66;
+  --seg-experience: #d8b440;
+  --seg-domain: #a98bc0;
+  --seg-location: #cf9575;
+}
+
+@theme inline {
+  --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-soft: var(--ink-soft);
+  --color-on-ink: var(--on-ink);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-mark: var(--mark);
+  --color-mark-soft: var(--mark-soft);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-sans);
+  /* No global 'tnum': in this face it also makes , and . fixed-width. Numbers opt in via .tabular-nums */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Highlighter stroke: the one bold device in the UI, used only for matches. */
+.mark {
+  background: linear-gradient(100deg, transparent 0 2%, var(--mark) 3% 96%, transparent 98%);
+  background-size: 100% 62%;
+  background-position: 0 72%;
+  background-repeat: no-repeat;
+  padding: 0 0.15em;
+  color: inherit;
+}
+.dark .mark {
+  color: #12181a;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::selection {
+  background: var(--mark);
+  color: #12181a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
