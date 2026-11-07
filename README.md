@@ -86,6 +86,26 @@ cd C:\dev\talentlens; git pull; powershell -ExecutionPolicy Bypass -File scripts
 
 Your library, saved lists and settings are kept. Your resume files are never touched.
 
+## Uninstalling
+
+```bash
+bash scripts/macos/uninstall.sh                                   # Mac
+powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1      # Windows
+```
+
+| Part | Removed? |
+| --- | --- |
+| **Your resume folders** (CVs, JDs) and everything in them | **Never** |
+| The app or shortcuts, plus TalentLens's working data (libraries, settings, search models, logs) | Always (`-KeepData` / `--keep-data` keeps the data) |
+| Ollama and its AI models (about 3 GB) | You're asked |
+| The Playwright test browser | You're asked (default: yes) |
+| uv-managed Python and caches, Graphify | You're asked |
+| uv, Node.js, Git, GitHub CLI, LibreOffice (shared tools) | You're asked (default: no) |
+| Homebrew (Mac) | You're asked; `--all` never removes it unattended |
+| The TalentLens code folder | You're asked |
+
+Add `-DryRun` / `--dry-run` to see exactly what would be removed without changing anything, or `-All -Yes` / `--all --yes` to remove everything without questions.
+
 ---
 
 ## Using TalentLens
