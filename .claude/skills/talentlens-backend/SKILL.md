@@ -21,7 +21,7 @@ description: Conventions and hard rules for TalentLens backend work (FastAPI, SQ
 - SQLite in WAL mode. FTS5 handles lexical search. Embeddings are float32 BLOBs, kept in an in-memory numpy matrix for cosine search.
 - AI is local only:
   - Ollama (`qwen2.5:3b-instruct`) with JSON-schema `format`
-  - `fastembed` (bge-small-en-v1.5, bge-reranker-base)
+  - `fastembed` (bge-small-en-v1.5, jina-reranker-v1-turbo-en)
   - RapidOCR
 - Every AI call must degrade gracefully. When Ollama is unavailable, fall back to the rule-based extractor and never crash indexing.
 - `TALENTLENS_LLM=mock` swaps in a deterministic fake for tests.

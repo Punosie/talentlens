@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     ollama_timeout_s: float = 120.0
 
     embed_model: str = "BAAI/bge-small-en-v1.5"
-    rerank_model: str = "BAAI/bge-reranker-base"
+    rerank_model: str = "jinaai/jina-reranker-v1-turbo-en"
     embeddings: Literal["fastembed", "mock"] = "fastembed"
 
     max_upload_mb: int = 20

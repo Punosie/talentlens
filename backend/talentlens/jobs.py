@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
@@ -44,6 +46,7 @@ class IndexQueue:
         self._status = IndexStatus()
         self._stop = False
         self.ai_paused = False
+        self._interactive = 0
         self._thread = threading.Thread(target=self._loop, name="talentlens-indexer", daemon=True)
 
     # --- lifecycle -------------------------------------------------------
@@ -160,7 +163,12 @@ class IndexQueue:
 
         def should_stop() -> bool:
             with self._cv:
-                return self._pending is not None or self._stop or self.ai_paused
+                return (
+                    self._pending is not None
+                    or self._stop
+                    or self.ai_paused
+                    or self._interactive > 0
+                )
 
         try:
             result = self.indexer.refine_pending(should_stop=should_stop, progress=self._progress)
@@ -176,6 +184,21 @@ class IndexQueue:
             return self.indexer.pending_llm_count()
         except Exception:
             return 0
+
+    @contextmanager
+    def interactive(self) -> Iterator[None]:
+        """Hold while a user-facing LLM call runs; background AI yields to it."""
+        with self._cv:
+            self._interactive += 1
+        try:
+            yield
+        finally:
+            with self._cv:
+                self._interactive -= 1
+                if self._interactive == 0 and self._status.state == "idle" and not self._stop:
+                    self._pending = self._pending or "incremental"
+                    self._pending_reason = self._pending_reason or "resume AI"
+                    self._cv.notify_all()
 
     def set_ai_paused(self, paused: bool) -> IndexStatus:
         with self._cv:
