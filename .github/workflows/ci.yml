@@ -1,0 +1,64 @@
+name: CI
+
+# Runs the backend tests and the Playwright end-to-end suite on Windows and an
+# Apple Silicon Mac, with mock AI (no models are downloaded in CI).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Backend dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check backend scripts
+
+      - name: Backend tests
+        run: uv run pytest
+
+      - name: macOS setup script syntax
+        if: runner.os == 'macOS'
+        run: for f in scripts/macos/*.sh; do bash -n "$f"; done
+
+      - name: UI dependencies and browser
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        working-directory: frontend
+        run: npm run test:e2e
+
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: frontend/playwright-report
+          retention-days: 7

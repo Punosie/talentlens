@@ -4,11 +4,12 @@ A local resume library and JD shortlisting web app: a FastAPI backend in `backen
 
 - The **hard rules** and backend conventions are in `.claude/skills/talentlens-backend/SKILL.md`. Read them before touching backend code. The most important one: **never modify the CV source files, `cv_index.csv`, `not_copied.csv` or any `.env`.**
 - For UI work, follow `.claude/skills/frontend-design`. For browser checks, see `.claude/skills/webapp-testing`.
-- CV data lives outside the repo, at `TALENTLENS_CV_DIR` (default `%USERPROFILE%\OneDrive\Desktop\CVs\files`). Nothing from it may be committed.
+- CV data lives outside the repo. The folder is chosen in the app and saved in `<data_dir>/settings.json`; `TALENTLENS_CV_DIR` in `.env` overrides and locks it. Nothing from it may be committed.
 - Commands:
   - `uv run pytest` runs the backend tests
   - `npm --prefix frontend run test:e2e` runs the Playwright tests
-  - `scripts/start.ps1` runs the app
+  - `scripts/start.ps1` (Windows) or `bash scripts/macos/start.sh` (macOS) runs the app
+  - `uv run python scripts/bench_ai.py <db>` benchmarks local-AI settings on a copy of a library
 
 ## graphify
 
