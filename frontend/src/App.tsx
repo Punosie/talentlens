@@ -96,9 +96,7 @@ export default function App() {
       <nav aria-label="Main" className="flex w-16 shrink-0 flex-col border-r border-line bg-surface lg:w-60">
         <div className="flex h-16 items-center gap-2.5 px-4">
           <img src="/favicon.svg" alt="" className="size-8" />
-          <span className="hidden text-[17px] font-bold tracking-tight lg:inline">
-            Talent<span className="mark">Lens</span>
-          </span>
+          <span className="hidden text-[18px] font-bold tracking-[-0.02em] lg:inline">TalentLens</span>
         </div>
         <ul className="flex flex-col gap-1 px-2.5 pt-3">
           {NAV.map((n) => (

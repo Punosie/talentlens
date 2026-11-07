@@ -34,22 +34,22 @@ ICNS_TYPES = (
 )
 
 
+def _logo_pdf() -> pymupdf.Document:
+    # Rendering the SVG directly paints an opaque white page behind it (white corners);
+    # converting to PDF first keeps the background truly transparent.
+    svg = pymupdf.open(stream=SVG.read_bytes(), filetype="svg")
+    return pymupdf.open("pdf", svg.convert_to_pdf())
+
+
 def render(size: int, *, pad: float = 0.0) -> bytes:
-    """PNG of the logo at `size` px; `pad` adds transparent margin (macOS icon grid)."""
-    doc = pymupdf.open(stream=SVG.read_bytes(), filetype="svg")
-    page = doc[0]
-    inner = size * (1 - 2 * pad)
-    zoom = inner / max(page.rect.width, page.rect.height)
-    logo = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=True)
-    doc.close()
-    if not pad:
-        return logo.tobytes("png")
-    canvas = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, size, size), 1)
-    canvas.clear_with(0)
-    off = round(size * pad)
-    logo.set_origin(off, off)
-    canvas.copy(logo, logo.irect)
-    return canvas.tobytes("png")
+    """PNG of the logo at `size` px with a transparent background; `pad` adds a transparent
+    margin (macOS icon grid)."""
+    logo = _logo_pdf()
+    canvas = pymupdf.open()
+    page = canvas.new_page(width=size, height=size)
+    m = size * pad
+    page.show_pdf_page(pymupdf.Rect(m, m, size - m, size - m), logo, 0)
+    return page.get_pixmap(alpha=True).tobytes("png")
 
 
 def write_ico() -> None:
