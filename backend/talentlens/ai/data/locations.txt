@@ -1,0 +1,72 @@
+# Location gazetteer
+# Format: Country | country alias | ... :: City | city alias ; City ; ...
+# Cities are matched case-insensitively on word boundaries; earliest match near the top of a resume wins.
+
+India | Bharat :: Bengaluru | Bangalore ; Mumbai | Bombay | Navi Mumbai | Thane ; Delhi | New Delhi | Delhi NCR | NCR ; Gurugram | Gurgaon ; Noida | Greater Noida ; Hyderabad | Secunderabad ; Chennai | Madras ; Pune ; Kolkata | Calcutta ; Ahmedabad ; Jaipur ; Lucknow ; Chandigarh | Mohali | Panchkula ; Indore ; Bhopal ; Nagpur ; Kochi | Cochin | Ernakulam ; Thiruvananthapuram | Trivandrum ; Coimbatore ; Visakhapatnam | Vizag ; Vadodara | Baroda ; Surat ; Bhubaneswar ; Patna ; Ranchi ; Guwahati ; Dehradun ; Mysuru | Mysore ; Mangaluru | Mangalore ; Nashik ; Aurangabad ; Ludhiana ; Amritsar ; Jalandhar ; Kanpur ; Varanasi ; Agra ; Meerut ; Ghaziabad ; Faridabad ; Raipur ; Jodhpur ; Udaipur ; Madurai ; Tiruchirappalli | Trichy ; Vijayawada ; Goa | Panaji ; Shimla ; Jammu ; Srinagar ; Allahabad | Prayagraj ; Gwalior ; Jabalpur ; Kota ; Rajkot ; Hubli ; Belgaum | Belagavi ; Puducherry | Pondicherry
+United Arab Emirates | UAE | U.A.E | Emirates :: Dubai ; Abu Dhabi ; Sharjah ; Ajman ; Ras Al Khaimah | RAK ; Fujairah ; Al Ain
+Saudi Arabia | KSA | Kingdom of Saudi Arabia :: Riyadh ; Jeddah | Jiddah ; Dammam ; Khobar | Al Khobar ; Dhahran ; Mecca | Makkah ; Medina | Madinah ; Jubail ; Yanbu ; Tabuk ; Abha
+Qatar :: Doha ; Lusail ; Al Wakrah
+Kuwait :: Kuwait City ; Salmiya ; Hawalli
+Bahrain :: Manama ; Muharraq
+Oman | Sultanate of Oman :: Muscat ; Salalah ; Sohar
+Jordan :: Amman ; Irbid ; Aqaba
+Lebanon :: Beirut
+Egypt :: Cairo ; Alexandria ; Giza
+Iraq :: Baghdad ; Erbil ; Basra
+Turkey | Türkiye :: Istanbul ; Ankara ; Izmir
+Israel :: Tel Aviv ; Jerusalem ; Haifa
+Iran :: Tehran
+Pakistan :: Karachi ; Lahore ; Islamabad ; Rawalpindi ; Faisalabad ; Peshawar ; Multan
+Bangladesh :: Dhaka ; Chittagong | Chattogram
+Sri Lanka :: Colombo ; Kandy
+Nepal :: Kathmandu
+United States | USA | U.S.A | US | United States of America :: New York | NYC | New York City ; San Francisco | SF Bay Area | Bay Area ; San Jose ; Seattle ; Los Angeles ; Chicago ; Boston ; Austin ; Dallas ; Houston ; Atlanta ; Denver ; Phoenix ; Philadelphia ; Washington DC | Washington, D.C. ; Miami ; San Diego ; Raleigh ; Minneapolis ; Detroit ; Pittsburgh ; Portland ; Salt Lake City ; Las Vegas ; Orlando ; Tampa ; Nashville ; Columbus ; Cleveland ; Cincinnati ; Kansas City ; St. Louis ; Indianapolis ; Baltimore ; Sacramento ; Palo Alto ; Mountain View ; Sunnyvale ; Santa Clara ; Redmond ; Jersey City ; Newark ; Plano ; Irvine ; Fort Worth ; San Antonio ; Milwaukee ; Richmond ; Buffalo
+Canada :: Toronto ; Vancouver ; Montreal ; Calgary ; Ottawa ; Edmonton ; Mississauga ; Waterloo ; Winnipeg ; Halifax ; Quebec City
+United Kingdom | UK | U.K. | Great Britain | England | Scotland | Wales :: London ; Manchester ; Birmingham ; Edinburgh ; Glasgow ; Leeds ; Bristol ; Liverpool ; Cambridge ; Oxford ; Milton Keynes ; Belfast ; Cardiff ; Newcastle ; Sheffield ; Nottingham ; Leicester ; Southampton
+Ireland :: Dublin ; Cork ; Galway ; Limerick
+Germany | Deutschland :: Berlin ; Munich | München ; Frankfurt ; Hamburg ; Cologne | Köln ; Stuttgart ; Düsseldorf | Dusseldorf ; Leipzig
+France :: Paris ; Lyon ; Marseille ; Toulouse ; Lille
+Netherlands | Holland :: Amsterdam ; Rotterdam ; The Hague ; Utrecht ; Eindhoven
+Belgium :: Brussels ; Antwerp ; Ghent
+Switzerland :: Zurich | Zürich ; Geneva ; Bern | Berne ; Lausanne
+Austria :: Vienna | Wien ; Salzburg
+Spain :: Madrid ; Barcelona ; Valencia ; Seville ; Malaga
+Portugal :: Lisbon ; Porto
+Italy :: Rome ; Milan | Milano ; Turin ; Naples ; Bologna
+Greece :: Athens ; Thessaloniki
+Cyprus :: Nicosia ; Limassol ; Larnaca
+Poland :: Warsaw ; Krakow | Kraków ; Wroclaw ; Gdansk
+Czech Republic | Czechia :: Prague ; Brno
+Hungary :: Budapest
+Romania :: Bucharest ; Cluj-Napoca | Cluj
+Sweden :: Stockholm ; Gothenburg ; Malmö | Malmo
+Norway :: Oslo ; Bergen
+Denmark :: Copenhagen ; Aarhus
+Finland :: Helsinki ; Espoo
+Russia :: Moscow ; Saint Petersburg
+Ukraine :: Kyiv | Kiev ; Lviv ; Kharkiv
+Singapore :: Singapore
+Malaysia :: Kuala Lumpur | KL ; Penang ; Johor Bahru ; Cyberjaya
+Indonesia :: Jakarta ; Bali ; Surabaya
+Thailand :: Bangkok
+Vietnam :: Ho Chi Minh City | Saigon ; Hanoi
+Philippines :: Manila ; Makati ; Cebu ; Quezon City ; Taguig
+Hong Kong :: Hong Kong
+China :: Beijing ; Shanghai ; Shenzhen ; Guangzhou ; Hangzhou ; Chengdu
+Taiwan :: Taipei
+Japan :: Tokyo ; Osaka ; Yokohama ; Kyoto
+South Korea | Korea :: Seoul ; Busan
+Australia :: Sydney ; Melbourne ; Brisbane ; Perth ; Adelaide ; Canberra
+New Zealand :: Auckland ; Wellington ; Christchurch
+South Africa :: Johannesburg ; Cape Town ; Durban ; Pretoria
+Nigeria :: Lagos ; Abuja
+Kenya :: Nairobi ; Mombasa
+Ghana :: Accra
+Morocco :: Casablanca ; Rabat
+Tunisia :: Tunis
+Ethiopia :: Addis Ababa
+Brazil :: São Paulo | Sao Paulo ; Rio de Janeiro
+Mexico :: Mexico City ; Monterrey ; Guadalajara
+Argentina :: Buenos Aires
+Chile :: Santiago
+Colombia :: Bogotá | Bogota ; Medellín | Medellin

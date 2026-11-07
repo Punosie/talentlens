@@ -1,0 +1,29 @@
+# Domain (industry) taxonomy
+# Format: Domain Name | keyword | keyword ...
+# A resume is tagged with a domain when its keywords appear often enough (see rules.py).
+# Keywords of 3 characters or fewer only match as written or in UPPERCASE (e.g. "EV", "PwC").
+
+Banking & Financial Services | banking | bank | bfsi | financial services | fintech | lending | credit cards | retail banking | corporate banking | nbfc | wealth management | asset management | payments | treasury | capital markets | investment banking | brokerage | mutual funds
+Insurance | insurance | insurer | underwriting | claims | reinsurance | actuarial | policyholder | bancassurance
+Telecommunications | telecom | telecommunications | telco | mobile operator | network operator | 4g | 5g | lte | ran | noc | gsm | isp | broadband | ftth | roaming | interconnect | spectrum | ericsson | nokia | huawei | vodafone | airtel | jio | etisalat | stc | zain | ooredoo | mobily | omantel
+Retail | retail | retailer | store manager | supermarket | hypermarket | merchandising | point of sale | pos | footfall | shrinkage | planogram | store operations
+E-commerce & Marketplaces | e-commerce | ecommerce | online marketplace | marketplace | d2c | direct to consumer | online retail | amazon | flipkart | noon | shopify
+FMCG & Consumer Goods | fmcg | cpg | consumer goods | consumer products | beverages | personal care | food and beverage | f&b | general trade | modern trade | distributors
+Information Technology & Software | saas | it services | information technology | software development | product engineering | software engineering | devops | microservices | enterprise software | software products
+IT Consulting & Outsourcing | it consulting | outsourcing | offshore | system integrator | implementation partner | infosys | tcs | wipro | accenture | cognizant | capgemini | hcl | tech mahindra
+Healthcare & Hospitals | healthcare | hospital | clinic | patient | clinical | medical | nursing | diagnostics | health insurance | ehr | emr
+Pharmaceuticals & Life Sciences | pharma | pharmaceutical | life sciences | biotech | biotechnology | clinical trials | pharmacovigilance | drug | gmp | regulatory affairs
+Manufacturing & Industrial | manufacturing | factory | plant | production line | assembly line | industrial | machining | oem | shop floor | lean manufacturing
+Automotive | automotive | automobile | vehicle | car dealership | dealer network | oem | auto components | ev | electric vehicle
+Oil, Gas & Energy | oil and gas | oil & gas | petroleum | refinery | upstream | downstream | drilling | power plant | renewable energy | solar | utilities | aramco | adnoc | energy sector
+Construction & Real Estate | construction | real estate | civil works | epc contractor | facility management | MEP | real estate developer | construction projects | site engineer | building construction
+Logistics & Supply Chain | logistics | supply chain | freight | shipping | warehouse | warehousing | 3pl | courier | last mile | fleet | transportation | port | customs
+Travel, Hospitality & Aviation | hospitality | hotel | hotels | resort | travel | tourism | airline | aviation | airport | restaurant | qsr
+Media, Entertainment & Advertising | media | entertainment | advertising | agency | broadcasting | publishing | ott | digital media | film | gaming
+Education & EdTech | edtech | e-learning | elearning | k-12 | higher education | faculty member | lecturer | curriculum development | learning management system
+Government & Public Sector | government | public sector | ministry | municipality | psu | defence | defense | public administration
+Consulting & Professional Services | consulting | management consulting | advisory | big four | deloitte | PwC | kpmg | ernst & young | ey | mckinsey | bcg | bain
+Human Resources & Staffing | staffing | recruitment agency | executive search | hr services | manpower | talent acquisition | rpo
+Agriculture & Food | agriculture | agri | farming | agritech | dairy | food processing | crops
+Cybersecurity | cybersecurity | cyber security | information security | soc | siem | threat | vulnerability | penetration testing
+Customer Value Management & CRM | cvm | customer value management | churn | retention | crm | loyalty | customer lifecycle | campaign management | segmentation | propensity

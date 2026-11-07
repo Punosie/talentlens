@@ -1,0 +1,717 @@
+# TalentLens skills taxonomy
+# Format: Canonical Name | alias | alias ...
+# Matching is case-insensitive on word boundaries. Prefix a name or alias with "=" to make it
+# case-sensitive. Prefix the canonical name with "!" to never match it in text (lookup only).
+# Ambiguous English words (spring, excel, lean, safe, ran...) are case-sensitive or omitted.
+# Lines starting with "#" are comments.
+
+# --- Programming languages
+Python | python3
+Java | core java | j2ee | java ee | jee | jsp | servlets
+JavaScript | js | ecmascript | es6
+TypeScript
+C++ | cpp | c plus plus
+C# | csharp | c sharp
+!C | =C programming | c language | ansi c
+!Go | golang | go language | go lang
+=Rust | rust programming
+Kotlin
+=Swift | swift programming | swift ui
+Objective-C | objective c | objc
+=Ruby | ruby programming
+PHP
+Perl
+Scala
+!R | =R programming | r language | rstudio | =R Studio
+MATLAB
+!Dart | dart programming
+Lua
+Haskell
+Elixir
+Erlang
+Clojure
+F# | fsharp
+Groovy
+COBOL
+Fortran
+Assembly Language | assembler | assembly language | x86 assembly
+VBA | excel vba | visual basic for applications
+Visual Basic | vb.net | vb6 | visual basic .net
+Shell Scripting | shell script | unix shell | bash | bash scripting
+PowerShell
+SQL | structured query language
+PL/SQL | plsql | pl-sql
+T-SQL | tsql | transact-sql
+Solidity
+ABAP | sap abap
+=Apex | salesforce apex
+Verilog
+VHDL
+Embedded C
+
+# --- Web / frontend
+HTML | html5
+CSS | css3
+Sass | scss
+React | react.js | reactjs
+Next.js | nextjs
+Angular | angularjs | angular.js
+Vue.js | vuejs | =Vue | nuxt | nuxt.js
+Svelte
+jQuery
+Redux
+Tailwind CSS | tailwindcss
+=Bootstrap | bootstrap css | twitter bootstrap
+Webpack
+Three.js | threejs
+D3.js | d3
+GraphQL
+REST APIs | rest api | restful | restful apis | rest services | restful web services
+SOAP | soap web services
+WebSockets | websocket
+Web Accessibility | wcag | a11y
+Responsive Design | responsive web design
+Figma
+Adobe XD
+UI/UX Design | ui/ux | ux design | ui design | user experience design | user interface design
+WordPress
+Drupal
+Shopify
+Magento
+
+# --- Backend / frameworks
+Node.js | nodejs | =Node
+Express.js | expressjs
+NestJS | nest.js
+Django
+Flask
+FastAPI
+=Spring | spring framework | spring mvc
+Spring Boot | springboot
+=Hibernate
+.NET | dotnet | .net framework | .net core | asp.net | asp.net core | asp.net mvc
+Ruby on Rails | ror
+Laravel
+Symfony
+Microservices | microservice | micro services
+Event-Driven Architecture | event driven architecture | event-driven
+gRPC
+Kafka | apache kafka
+RabbitMQ
+ActiveMQ
+Celery
+Redis
+Memcached
+Nginx
+Apache Tomcat | tomcat
+JBoss | wildfly
+WebLogic
+WebSphere | ibm websphere
+OAuth | oauth2 | oauth 2.0
+JWT
+API Gateway
+Swagger | openapi
+
+# --- Mobile
+Android | android sdk | android development
+iOS | ios development
+React Native
+Flutter
+Xamarin
+SwiftUI
+Jetpack Compose
+
+# --- Data / databases
+MySQL
+PostgreSQL | postgres
+Oracle Database | oracle db | oracle 11g | oracle 12c | oracle 19c | oracle rdbms
+Microsoft SQL Server | sql server | mssql | ms sql
+MongoDB
+Cassandra | apache cassandra
+DynamoDB
+Elasticsearch | elastic search | elk stack
+OpenSearch
+Neo4j
+SQLite
+MariaDB
+DB2 | ibm db2
+Teradata
+Snowflake
+BigQuery | google bigquery
+Redshift | amazon redshift
+Databricks
+Apache Spark | pyspark | spark sql | =Spark
+Hadoop | hdfs | mapreduce
+Apache Hive | =Hive | hiveql
+HBase
+Apache Flink | flink
+Apache Beam
+Apache Airflow | =Airflow
+dbt | data build tool
+Informatica | informatica powercenter
+Talend
+SSIS
+SSRS
+SSAS
+DataStage | ibm datastage
+Ab Initio
+ETL | etl development | extract transform load
+ELT
+Data Warehousing | data warehouse | dwh | edw
+Data Modeling | data modelling | dimensional modeling | dimensional modelling | star schema
+Data Lake | lakehouse | delta lake
+Data Governance
+Data Quality
+Master Data Management | mdm
+Data Engineering
+Data Migration
+Data Pipelines | data pipeline
+Big Data
+NoSQL
+Pandas
+NumPy
+SciPy
+Matplotlib
+Seaborn
+Plotly
+Jupyter | jupyter notebook
+
+# --- AI / ML / analytics
+Machine Learning | =ML | machine-learning
+Deep Learning | deep-learning
+Artificial Intelligence | =AI
+Generative AI | genai | gen ai | generative artificial intelligence
+Large Language Models | llm | llms | large language model
+Prompt Engineering
+Retrieval-Augmented Generation | =RAG | retrieval augmented generation
+LangChain
+LlamaIndex
+Natural Language Processing | nlp
+Computer Vision | image processing | opencv
+TensorFlow
+PyTorch
+Keras
+scikit-learn | sklearn | scikit learn
+XGBoost
+LightGBM
+Hugging Face | huggingface | hugging face transformers
+OpenAI API | openai | chatgpt api | gpt-4
+MLOps
+MLflow
+Kubeflow
+SageMaker | aws sagemaker | amazon sagemaker
+Azure Machine Learning | azure ml
+Vertex AI
+Recommendation Systems | recommender systems | recommendation engine
+Time Series Analysis | time series forecasting | time-series
+Statistical Modeling | statistical modelling | statistical analysis
+Predictive Analytics | predictive modeling | predictive modelling
+A/B Testing | ab testing | split testing
+Data Science
+Data Analysis | data analytics
+Data Visualization | data visualisation | dashboards | dashboarding
+Business Intelligence | =BI
+Power BI | powerbi | power-bi
+Tableau
+Qlik | qlikview | qlik sense
+Looker
+Google Analytics | ga4
+Adobe Analytics | omniture
+SAS | sas programming | base sas
+SPSS | ibm spss
+=Excel | ms excel | microsoft excel | advanced excel | =MS-Excel
+Google Sheets
+Pivot Tables | pivot table
+Customer Analytics
+Marketing Analytics
+Churn Analytics | churn analysis | churn prediction | churn modeling | churn modelling | churn management
+Customer Segmentation | segmentation analysis
+Propensity Modeling | propensity models | propensity modelling
+Credit Risk Modeling | credit scoring | credit risk models | credit risk modelling
+Fraud Detection | fraud analytics | fraud management
+
+# --- Cloud & DevOps
+Amazon Web Services | =AWS | amazon aws
+AWS Lambda
+Amazon EC2 | ec2
+Amazon S3 | =S3
+AWS Glue
+Amazon EKS | =EKS
+Amazon ECS | =ECS
+CloudFormation | aws cloudformation
+Microsoft Azure | azure | ms azure
+Azure DevOps | vsts
+Azure Data Factory | =ADF
+Azure Synapse | synapse analytics
+Google Cloud Platform | =GCP | google cloud
+Oracle Cloud | =OCI | oracle cloud infrastructure
+IBM Cloud
+Alibaba Cloud
+Docker
+Kubernetes | k8s
+OpenShift | red hat openshift
+=Helm | helm charts
+Terraform
+Ansible
+=Puppet | puppet enterprise
+=Chef | chef infra
+Jenkins
+GitLab CI | gitlab ci/cd | =GitLab
+GitHub Actions
+CircleCI
+ArgoCD | argo cd
+CI/CD | ci cd | continuous integration | continuous delivery | continuous deployment
+DevOps
+DevSecOps
+Site Reliability Engineering | =SRE
+Infrastructure as Code | =IaC
+Git | github | bitbucket | version control
+SVN | subversion
+Maven | apache maven
+Gradle
+Linux | unix | rhel | red hat linux | ubuntu | centos | debian
+Windows Server
+VMware | vsphere | esxi | vcenter
+Hyper-V
+Virtualization | virtualisation
+Prometheus
+Grafana
+Datadog
+Splunk
+New Relic
+Dynatrace
+AppDynamics
+Nagios
+Zabbix
+Observability
+Serverless
+Solution Architecture | solutions architecture | solution architect | solutions architect | cloud architecture
+Cloud Migration
+Hybrid Cloud | multi-cloud | multicloud
+
+# --- Testing / QA
+Quality Assurance | software testing | =QA
+Manual Testing
+Test Automation | automation testing | automated testing
+Selenium | selenium webdriver
+Cypress
+Playwright
+Appium
+JUnit
+TestNG
+pytest
+Jest
+Mocha
+Cucumber | =BDD
+Postman
+JMeter | apache jmeter
+LoadRunner
+Performance Testing | load testing
+API Testing
+Unit Testing
+Regression Testing
+User Acceptance Testing | =UAT
+
+# --- Security
+Cybersecurity | cyber security | information security | infosec
+Network Security
+Application Security | appsec
+Penetration Testing | pen testing | pentesting | ethical hacking
+Vulnerability Management | vulnerability assessment | =VAPT
+SIEM
+Security Operations | security operations center | =SOC
+Identity and Access Management | =IAM
+Firewalls | firewall | palo alto networks | fortinet | fortigate | check point
+ISO 27001 | iso27001 | iso/iec 27001
+GDPR
+PCI DSS | pci-dss
+SOX Compliance | sox compliance | sarbanes-oxley | =SOX
+Risk Assessment
+Incident Response
+Zero Trust
+Cryptography | =PKI | encryption
+Burp Suite
+Wireshark
+
+# --- Networking & telecom
+Networking | computer networks | network administration | network engineering
+TCP/IP | tcp ip
+=DNS
+=DHCP
+LAN/WAN | =LAN | =WAN
+=VPN
+Routing and Switching | routing & switching
+Cisco | cisco ios | =CCNA | =CCNP | =CCIE
+Juniper | juniper networks
+=BGP
+=OSPF
+=MPLS
+SD-WAN | sdwan
+VoIP | =SIP
+Wi-Fi | wifi | =WLAN | wireless networking
+Load Balancing | load balancer | f5 networks | f5 big-ip
+Network Operations Center | =NOC | noc operations
+Telecommunications | telecom | telecommunication | telco
+=RAN | radio access network
+4G/LTE | =LTE | =4G
+5G | 5g nr
+3G | =UMTS | =WCDMA
+=GSM | =2G
+Core Network | packet core | =EPC core | =IMS
+OSS/BSS | =OSS | =BSS
+Ericsson
+Nokia
+Huawei
+RF Engineering | rf planning | rf optimization | rf optimisation | drive testing
+Fiber Optics | fibre optics | =FTTH | =GPON
+Transmission Networks | microwave transmission | =SDH | =DWDM
+Network Planning
+Telecom Billing | billing systems | convergent billing
+Interconnect Billing | interconnect
+Roaming
+Value Added Services | =VAS
+USSD | sms gateway
+IoT | internet of things
+SCADA
+=PLC | plc programming
+Embedded Systems
+Satellite Communications | satcom
+Spectrum Management
+
+# --- ERP / CRM / enterprise apps
+ERP | erp systems | erp implementation
+=SAP | sap erp | sap ecc
+SAP S/4HANA | s/4hana | s4hana | sap hana
+SAP FICO | sap fi | sap co | sap fi/co
+SAP MM
+SAP SD
+SAP PP
+SAP SuccessFactors | sap hcm | sap hr | successfactors
+SAP BW | sap bi | sap bw/bi
+SAP Retail | sap is-retail
+Oracle E-Business Suite | oracle ebs | oracle apps | oracle applications
+Oracle Fusion | oracle cloud erp
+Microsoft Dynamics | dynamics 365 | dynamics crm | dynamics ax | navision
+NetSuite | oracle netsuite
+Salesforce | sfdc | salesforce.com | salesforce crm
+Salesforce Marketing Cloud | marketing cloud | exacttarget
+HubSpot
+Zoho | zoho crm
+ServiceNow
+=Workday | workday hcm
+=Tally | tally erp | tally prime
+QuickBooks
+Odoo
+Jira | atlassian jira
+Confluence
+Trello
+SharePoint | ms sharepoint
+Microsoft Office | ms office | ms-office | office 365 | microsoft 365
+PowerPoint | ms powerpoint
+Microsoft Project | ms project
+Visio | ms visio
+Power Automate | microsoft flow
+Power Apps | powerapps
+Robotic Process Automation | =RPA
+UiPath
+Automation Anywhere
+Blue Prism
+Siebel | oracle siebel
+Amdocs
+Pega | pegasystems
+Guidewire
+Temenos | =T24
+Finacle
+Flexcube | oracle flexcube
+Murex
+Bloomberg Terminal | bloomberg
+Refinitiv | reuters eikon | =Eikon
+Braze
+CleverTap
+MoEngage
+Adobe Campaign
+Adobe Experience Manager | =AEM
+Marketo
+Mailchimp
+Mixpanel
+Optimizely
+
+# --- Product / project / process
+Product Management | product manager | product owner
+Product Strategy | product roadmap | roadmapping
+Project Management | project manager | project planning
+Program Management | programme management | program manager | programme manager
+Portfolio Management
+=PMO | project management office
+=PMP | pmp certified | project management professional
+PRINCE2
+Agile | agile methodology | agile methodologies
+Scrum | scrum master
+Kanban
+=SAFe | scaled agile
+Waterfall methodology | =Waterfall
+=Lean | lean management | lean principles
+Six Sigma | lean six sigma | green belt | black belt
+ITIL | itil v3 | itil v4 | itil foundation
+IT Service Management | =ITSM
+Change Management | organizational change | organisational change
+Stakeholder Management | stakeholder engagement
+Requirements Gathering | requirement gathering | requirements analysis | requirements elicitation
+Business Analysis | business analyst
+Business Process Improvement | process improvement | business process reengineering | =BPR
+Process Mapping | =BPMN
+User Stories
+Vendor Management | vendor relationship management | supplier management
+Contract Management | contract negotiation
+Risk Management
+Corporate Governance
+Budget Management | budgeting | budget planning
+Resource Management | resource planning
+Delivery Management | service delivery | delivery manager
+Release Management
+Digital Transformation
+Business Transformation
+Target Operating Model | operating model design
+Strategic Planning | corporate strategy | business strategy
+Management Consulting | strategy consulting
+Go-to-Market Strategy | go to market | go-to-market | =GTM
+Market Research | market analysis
+Competitive Analysis | competitor analysis | competitive intelligence
+Business Development | biz dev | =BD
+Strategic Partnerships | partnerships | alliances
+Mergers and Acquisitions | m&a | mergers & acquisitions
+Due Diligence
+Business Planning
+P&L Management | p&l | profit and loss | p&l ownership | p&l responsibility
+OKRs | =OKR
+KPI Management | kpis | =KPI
+Design Thinking
+Innovation Management
+
+# --- Sales / marketing / customer
+Sales Management | sales manager | sales leadership | sales strategy
+B2B Sales | =B2B
+B2C Sales | =B2C
+Enterprise Sales | enterprise selling | solution selling
+Key Account Management | key accounts | =KAM | account management
+Channel Sales | channel management | channel partners | distribution management
+Inside Sales
+Pre-Sales | presales | pre sales
+Lead Generation
+Sales Forecasting
+Pipeline Management | sales pipeline
+CRM | customer relationship management
+Negotiation | negotiation skills
+Marketing Management | marketing strategy | marketing manager
+Digital Marketing | online marketing
+Performance Marketing
+Brand Management | branding | brand strategy
+Product Marketing
+Content Marketing | content strategy
+Social Media Marketing | social media | =SMM
+SEO | search engine optimization | search engine optimisation
+SEM | search engine marketing | =PPC | google ads | adwords
+Email Marketing
+Marketing Automation
+Affiliate Marketing
+Influencer Marketing
+Public Relations | media relations | =PR
+Event Management
+Trade Marketing
+Customer Value Management | =CVM
+Customer Lifecycle Management | lifecycle marketing | =CLM
+Loyalty Programs | loyalty management | loyalty program | loyalty programmes
+Customer Retention | retention marketing | retention strategy
+Customer Acquisition | acquisition marketing
+Cross-Sell and Upsell | cross-sell | cross selling | upselling | up-sell | upsell
+Campaign Management
+Pricing Strategy | pricing strategies | revenue management | yield management | pricing analytics | price management
+Customer Experience | =CX | customer experience management
+Customer Service | customer support | customer care
+Customer Success | customer success management
+Contact Center Operations | contact center | contact centre | call center | call centre | =BPO
+Net Promoter Score | =NPS
+Voice of Customer | =VoC
+Consumer Insights | customer insights
+E-commerce | ecommerce | online retail
+Marketplace Management | amazon seller central
+Omnichannel | omni-channel | omni channel
+Merchandising | visual merchandising
+Category Management
+Retail Operations | store operations
+Store Management | store manager
+Inventory Management | inventory control | stock management
+FMCG | =CPG | consumer goods
+Franchise Management | franchising
+
+# --- Finance / accounting / banking
+Financial Analysis | financial analyst
+Financial Modeling | financial modelling
+FP&A | financial planning and analysis | =FPA
+Financial Reporting
+Accounting
+Bookkeeping
+Accounts Payable
+Accounts Receivable
+General Ledger
+Audit | auditing | internal audit | statutory audit
+Taxation | direct tax | indirect tax | =GST | =VAT
+IFRS
+US GAAP | =GAAP
+Treasury Management | treasury | cash management
+Corporate Finance
+Investment Banking
+Equity Research
+Wealth Management | asset management | portfolio manager
+Private Equity
+Venture Capital
+Valuation | business valuation | =DCF
+Credit Analysis | credit appraisal | underwriting
+Lending | loan origination | loans
+Retail Banking
+Corporate Banking
+Trade Finance
+Payments | payment systems | payment gateway | digital payments | card payments | credit cards | debit cards
+Anti-Money Laundering | =AML | =KYC | know your customer
+Regulatory Compliance | regulatory compliance management | compliance management | compliance officer
+Basel | basel iii
+Insurance | general insurance | life insurance
+Actuarial | actuarial science
+Claims Management
+Cost Accounting | costing
+Cost Optimization | cost reduction | cost optimisation | cost control
+Fundraising | fund raising
+Investor Relations
+=CFA | chartered financial analyst
+=CPA | certified public accountant
+Chartered Accountant | =ACA | =ACCA | =ICAI | =CA Inter
+
+# --- HR / people
+Human Resources | hr management | human resource management | =HR
+Talent Acquisition | recruitment | recruiting | hiring
+Executive Search | headhunting
+Onboarding
+Employee Relations
+Performance Management | performance appraisal
+Compensation and Benefits | =C&B | compensation | payroll
+Learning and Development | =L&D | training and development
+Succession Planning
+Workforce Planning
+HR Analytics | people analytics
+HRIS | hr information systems
+Organizational Development | organisational development
+Employee Engagement
+Labour Law | labor law | employment law
+Diversity and Inclusion | =DEI | =D&I
+Coaching | mentoring
+Team Leadership | team management | people management | leadership | team building | team lead
+
+# --- Operations / supply chain / manufacturing
+Operations Management | operations manager | operational excellence
+Supply Chain Management | supply chain | =SCM
+Logistics | logistics management
+Procurement | purchasing | strategic sourcing
+Warehouse Management | warehousing | =WMS
+Demand Planning | demand forecasting
+Production Planning | production planning and control
+Manufacturing
+Quality Control
+Quality Management | =QMS | iso 9001 | =TQM
+Lean Manufacturing
+Kaizen | =5S
+Facilities Management | facility management
+Fleet Management
+Import/Export | =EXIM | import export | customs clearance
+Health and Safety | =HSE | =EHS | occupational safety | =OSHA
+Maintenance Management | preventive maintenance | plant maintenance
+Construction Management
+Civil Engineering
+Mechanical Engineering
+Electrical Engineering
+AutoCAD
+SolidWorks
+CATIA
+Revit
+Primavera | primavera p6
+Cost Estimation | quantity surveying
+Oil and Gas | oil & gas
+Renewable Energy | solar energy | wind energy
+Power Sector | power distribution | power generation
+Utilities
+
+# --- Healthcare / pharma / life sciences
+Clinical Research | clinical trials
+Pharmacovigilance
+Regulatory Affairs
+Medical Devices
+Healthcare Management | hospital management | hospital administration
+Electronic Health Records | =EHR | =EMR
+HIPAA
+GMP | good manufacturing practice
+Medical Coding | icd-10
+Nursing
+Pharmaceutical Sales | pharma sales | medical representative
+
+# --- Legal / education / other
+Legal Advisory | corporate law | litigation
+Contract Drafting
+Intellectual Property | patents
+Teaching | lecturing
+Curriculum Development | instructional design
+E-learning | elearning | =LMS
+Research and Development | =R&D
+Technical Writing
+Copywriting
+Content Writing | content creation
+Translation
+Graphic Design | photoshop | adobe photoshop | adobe illustrator | indesign
+Video Editing | premiere pro | after effects | final cut pro
+Public Speaking | presentation skills
+Communication Skills | communication and interpersonal skills
+Problem Solving
+Analytical Skills
+Time Management
+Cross-functional Collaboration | cross-functional | cross functional teams
+Client Relationship Management | client relationship | client management | relationship management
+
+# --- Languages spoken
+English
+Arabic
+Hindi
+French
+German
+Spanish
+Mandarin
+Urdu
+Bengali
+Tamil
+Telugu
+Marathi
+Gujarati
+Kannada
+Malayalam
+Punjabi
+Russian
+Portuguese
+Italian
+Japanese
+Korean
+Turkish
+Persian | farsi
+Greek
+Dutch
+Tagalog | filipino language
+
+# --- Certifications (commonly listed as skills)
+AWS Certified | aws certified solutions architect | aws certification
+Azure Certified | =AZ-900 | =AZ-104 | =AZ-305 | microsoft certified azure
+Google Cloud Certified | gcp certified
+=CISSP
+=CISM
+=CISA
+=CEH | certified ethical hacker
+CompTIA | comptia security+
+=CKA | certified kubernetes administrator
+TOGAF
+COBIT
+=CSPO

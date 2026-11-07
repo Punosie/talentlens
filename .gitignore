@@ -17,7 +17,7 @@ CV_COLLECTION.md
 !.env.example
 
 # --- App data (lives in %LOCALAPPDATA%\TalentLens by default) ---------------
-data/
+/data/
 *.db
 *.db-wal
 *.db-shm
