@@ -66,6 +66,22 @@ test.describe('search resumes', () => {
     await expect(page.getByTestId('result-row')).toHaveCount(1)
   })
 
+  test('fast successive filter edits are never lost (no stale state)', async ({ page }) => {
+    // two clicks in the same JS task: React can't re-render in between
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('10–15'))!
+      btn.click()
+      btn.click()
+    })
+    await expect(page.getByTestId('active-filters')).toHaveCount(0) // toggled on, then off
+    await expect(page).not.toHaveURL(/ymin/)
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('3–6'))!
+      btn.click()
+    })
+    await expect(page.getByTestId('active-filters')).toContainText('3–6 yrs')
+  })
+
   test('location and industry filters', async ({ page }) => {
     await page.getByTestId('filter-location').getByRole('button', { name: 'Choose Location' }).click()
     await page.getByLabel('Filter Location').fill('Riyadh')

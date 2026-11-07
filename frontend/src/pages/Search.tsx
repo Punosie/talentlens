@@ -48,6 +48,14 @@ export default function SearchPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Always build on the *latest* filter state, even before React re-renders: quick successive
+  // edits (click a preset twice, then type min and max years) must not start from a stale
+  // snapshot and undo each other. React Router's functional form still sees the last render.
+  const latest = useRef(sp)
+  useEffect(() => {
+    latest.current = sp
+  }, [sp])
+
   const params: SearchParams = useMemo(
     () => ({
       q: q || undefined,
@@ -63,23 +71,21 @@ export default function SearchPage() {
   )
 
   useEffect(() => {
-    const next = new URLSearchParams(sp)
+    const base = latest.current
+    if ((base.get('q') ?? '') === q) return
+    const next = new URLSearchParams(base)
     if (q) next.set('q', q)
     else next.delete('q')
-    if (next.toString() !== sp.toString()) setSp(next, { replace: true })
-  }, [q, sp, setSp])
+    latest.current = next
+    setSp(next, { replace: true })
+  }, [q, setSp])
 
-  // Always build on the *latest* URL state: quick successive edits (e.g. min then max years)
-  // must not start from a stale snapshot and drop each other.
-  const update = (fn: (n: URLSearchParams) => void) =>
-    setSp(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        fn(next)
-        return next
-      },
-      { replace: true },
-    )
+  const update = (fn: (n: URLSearchParams) => void) => {
+    const next = new URLSearchParams(latest.current)
+    fn(next)
+    latest.current = next
+    setSp(next, { replace: true })
+  }
   const setList = (key: string, values: string[]) =>
     update((n) => {
       n.delete(key)
@@ -166,9 +172,13 @@ export default function SearchPage() {
                 aria-pressed={on}
                 onClick={() =>
                   update((next) => {
+                    // decide on/off from the latest state, not from what was last rendered
+                    const isOn =
+                      next.get('ymin') === (lo === null ? null : String(lo)) &&
+                      next.get('ymax') === (hi === null ? null : String(hi))
                     next.delete('ymin')
                     next.delete('ymax')
-                    if (!on) {
+                    if (!isOn) {
                       if (lo !== null) next.set('ymin', String(lo))
                       if (hi !== null) next.set('ymax', String(hi))
                     }
