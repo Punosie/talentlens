@@ -9,9 +9,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -19,9 +19,11 @@ from .api import cvs as cvs_api
 from .api import index as index_api
 from .api import jd as jd_api
 from .api import search as search_api
+from .api import system as system_api
 from .config import REPO_ROOT, Settings, get_settings
 from .enrich import Enricher
-from .state import AppState
+from .library import FolderProblem
+from .state import AppState, NoLibrary
 
 log = logging.getLogger("talentlens")
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -49,7 +51,12 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state: AppState = app.state.tl
         state.start()
-        log.info("TalentLens %s started; CV dir=%s", __version__, settings.cv_dir)
+        log.info(
+            "TalentLens %s started; resume folder=%s (%s)",
+            __version__,
+            state.library.folder if state.library else None,
+            state.cv_dir_source,
+        )
         try:
             yield
         finally:
@@ -65,14 +72,24 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
     app.state.tl = AppState.build(settings, enricher)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+    @app.exception_handler(NoLibrary)
+    async def _no_library(_req: Request, exc: NoLibrary) -> JSONResponse:
+        return JSONResponse({"detail": str(exc), "code": "no_folder"}, status_code=409)
+
+    @app.exception_handler(FolderProblem)
+    async def _folder_problem(_req: Request, exc: FolderProblem) -> JSONResponse:
+        return JSONResponse({"detail": str(exc), "code": "bad_folder"}, status_code=400)
+
     @app.get("/api/health", tags=["meta"])
     def health() -> dict[str, Any]:
         st: AppState = app.state.tl
+        lib = st.library
         return {
             "status": "ok",
             "version": __version__,
-            "cv_dir": str(settings.cv_dir),
-            "cv_dir_exists": st.store.exists(),
+            "cv_dir": str(lib.folder) if lib else None,
+            "cv_dir_exists": bool(lib and lib.store.exists()),
+            "needs_setup": lib is None,
             "llm": st.llm.status(),
             "embed_model": st.embedder.model_name,
         }
@@ -81,6 +98,7 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
     app.include_router(index_api.router)
     app.include_router(search_api.router)
     app.include_router(jd_api.router)
+    app.include_router(system_api.router)
 
     _mount_frontend(app, FRONTEND_DIST)
     return app

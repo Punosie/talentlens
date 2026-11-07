@@ -72,35 +72,20 @@ if ($WithLibreOffice -and -not (Test-Path 'C:\Program Files\LibreOffice\program\
     Winget-Install 'TheDocumentFoundation.LibreOffice' 'LibreOffice'
 }
 
-# --- 2. configuration (.env is only ever CREATED, never changed) -------------------
-Step 'Configuration'
-$envFile = Join-Path $Root '.env'
-$defaultCvDir = Join-Path $env:USERPROFILE 'OneDrive\Desktop\CVs\files'
-if (Test-Path $envFile) {
-    Ok '.env exists; leaving it untouched.'
-} elseif ($CvDir -or -not (Test-Path $defaultCvDir) -or $NoAI) {
-    if (-not $CvDir -and -not (Test-Path $defaultCvDir)) {
-        $CvDir = Read-Host "Folder that holds (or will hold) the resumes"
-    }
-    if (-not $CvDir) { $CvDir = $defaultCvDir }
-    New-Item -ItemType Directory -Force $CvDir | Out-Null
-    $content = (Get-Content (Join-Path $Root '.env.example') -Raw)
-    $content = $content -replace '(?m)^TALENTLENS_CV_DIR=.*$', "TALENTLENS_CV_DIR=$CvDir"
-    $csv = Join-Path (Split-Path -Parent $CvDir) 'cv_index.csv'
-    if (Test-Path $csv) { $content = $content -replace '(?m)^TALENTLENS_CV_INDEX_CSV=.*$', "TALENTLENS_CV_INDEX_CSV=$csv" }
-    else { $content = $content -replace '(?m)^TALENTLENS_CV_INDEX_CSV=.*$', '# TALENTLENS_CV_INDEX_CSV=' }
-    if ($NoAI) { $content = $content -replace '(?m)^TALENTLENS_LLM=.*$', 'TALENTLENS_LLM=off' }
-    Set-Content -Path $envFile -Value $content -Encoding UTF8
-    Ok "Created .env (resume folder: $CvDir)"
-} else {
-    Ok "Using the default resume folder: $defaultCvDir (no .env needed)"
-}
-
-# --- 3. Python backend ------------------------------------------------------------
+# --- 2. Python backend ------------------------------------------------------------
 Step 'Installing the backend (Python 3.12 via uv)'
 Invoke-Native 'uv sync' { uv sync --frozen }
 Ok 'Python dependencies installed'
 
+# --- 3. preferences (stored in the app's settings.json; .env is never written) ------
+Step 'Preferences'
+if ($CvDir) {
+    New-Item -ItemType Directory -Force $CvDir | Out-Null
+    Invoke-Native 'set-folder' { uv run --frozen talentlens set-folder "$CvDir" }
+} else {
+    Ok 'Resume folder: choose it in the app on first start (or it is found automatically).'
+}
+if ($NoAI) { Invoke-Native 'set-ai' { uv run --frozen talentlens set-ai off } }
 # --- 4. web UI ----------------------------------------------------------------------
 Step 'Building the web UI'
 Push-Location (Join-Path $Root 'frontend')
