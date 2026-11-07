@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS shortlists (
 """
 
 
+# Columns added after v0.1, applied with ALTER TABLE on existing databases.
+MIGRATIONS: list[tuple[str, str]] = [
+    ("confident", "INTEGER NOT NULL DEFAULT 0"),  # rules already read this CV well
+    ("ai_priority", "REAL NOT NULL DEFAULT 0"),  # higher = AI reads it sooner
+]
+
+
 class Database:
     """Thin thread-safe wrapper: one connection per call, WAL for concurrent readers."""
 
@@ -104,8 +111,16 @@ class Database:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            have = {r["name"] for r in conn.execute("PRAGMA table_info(cvs)")}
+            for col, ddl in MIGRATIONS:
+                if col not in have:  # additive only: existing data is never rewritten
+                    conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} {ddl}")
             conn.execute(
-                "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+                "CREATE INDEX IF NOT EXISTS ix_cvs_ai_queue ON cvs(status, ai_priority, added_at)"
+            )
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (str(SCHEMA_VERSION),),
             )
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterator
 from typing import Any, Protocol
 
 import httpx
@@ -27,13 +28,19 @@ class LLM(Protocol):
         self, system: str, user: str, schema: dict[str, Any], *, max_tokens: int = 512
     ) -> dict[str, Any]: ...
 
+    def text_stream(self, system: str, user: str, *, max_tokens: int = 220) -> Iterator[str]: ...
+
 
 class OllamaLLM:
-    def __init__(self, base_url: str, model: str, timeout_s: float = 120.0) -> None:
+    def __init__(
+        self, base_url: str, model: str, timeout_s: float = 120.0, num_ctx: int = 2048
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.name = f"ollama:{model}"
         self.timeout_s = timeout_s
+        # A small context keeps the whole model on modest GPUs (e.g. 2 GB) and speeds up reading
+        self.num_ctx = num_ctx
         self._last_check = 0.0
         self._last_ok = False
         self._last_error: str | None = None
@@ -74,8 +81,8 @@ class OllamaLLM:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "format": schema,
             "stream": False,
-            "keep_alive": "15m",
-            "options": {"temperature": 0, "num_ctx": 6144, "num_predict": max_tokens},
+            "keep_alive": "2h",
+            "options": {"temperature": 0, "num_ctx": self.num_ctx, "num_predict": max_tokens},
         }
         last: Exception | None = None
         for attempt in range(2):
@@ -93,6 +100,33 @@ class OllamaLLM:
                 self._last_check = 0  # force a fresh health check
         raise LLMUnavailable(str(last))
 
+    def text_stream(self, system: str, user: str, *, max_tokens: int = 220) -> Iterator[str]:
+        """Plain-text answer, yielded piece by piece as the model writes it."""
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "stream": True,
+            "keep_alive": "2h",
+            "options": {"temperature": 0.2, "num_ctx": self.num_ctx, "num_predict": max_tokens},
+        }
+        try:
+            with httpx.stream(
+                "POST", f"{self.base_url}/api/chat", json=payload, timeout=self.timeout_s
+            ) as r:
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    chunk = json.loads(line)
+                    piece = chunk.get("message", {}).get("content", "")
+                    if piece:
+                        yield piece
+                    if chunk.get("done"):
+                        break
+        except (httpx.HTTPError, ValueError) as e:
+            self._last_check = 0
+            raise LLMUnavailable(str(e)) from e
+
 
 class NoLLM:
     name = "off"
@@ -104,6 +138,9 @@ class NoLLM:
         return {"mode": "off", "available": False, "error": "Disabled (TALENTLENS_LLM=off)"}
 
     def json_chat(self, *a: Any, **k: Any) -> dict[str, Any]:
+        raise LLMUnavailable("LLM disabled")
+
+    def text_stream(self, *a: Any, **k: Any) -> Iterator[str]:
         raise LLMUnavailable("LLM disabled")
 
 
@@ -157,3 +194,15 @@ class MockLLM:
             "education": f.education,
             "summary": (f.summary or "")[:200],
         }
+
+    def text_stream(self, system: str, user: str, *, max_tokens: int = 220) -> Iterator[str]:
+        self.calls += 1
+        for word in [
+            "Verdict:",
+            "Mock",
+            "explanation.\nStrengths:",
+            "mock",
+            "strength\nGaps:",
+            "none",
+        ]:
+            yield word + " "

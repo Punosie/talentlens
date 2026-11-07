@@ -11,9 +11,9 @@ Pipeline:
 
 from __future__ import annotations
 
-import json
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,7 +37,8 @@ WEIGHTS = {
     "location": 7.0,
 }
 RETRIEVE_K = 120
-RERANK_K = 60
+RERANK_K = 30  # cross-encoder only for the closest candidates...
+RERANK_MARGIN = 0.15  # ...within this cosine distance of the best match
 
 
 @dataclass
@@ -49,25 +50,40 @@ class Candidate:
     fused: float = 0.0
 
 
-def _skill_hits(required: list[str], cv_skills: list[str], text_lower: str) -> list[str]:
-    """Which required skills the CV has: from its skills list, or mentioned in its text."""
+def _skill_hits(
+    required: list[str], cv_skills: list[str], cv_id: int, text_hits: dict[str, set[int]]
+) -> list[str]:
+    """Which required skills the CV has: from its skills list, its canonical form, or (for
+    free-text requirements) a whole-phrase match in its text, found up front via the FTS index."""
     have = {s.lower() for s in cv_skills}
     tax = taxonomy.skills()
     hits: list[str] = []
     for req in required:
-        if req.lower() in have:
-            hits.append(req)
-            continue
-        # free-text requirement or alias: look for it in the CV text as a whole word
-        if len(req) >= 3 and re.search(
-            rf"(?<![\w+#]){re.escape(req.lower())}(?![\w+#])", text_lower
+        canon = tax.canonicalize(req)
+        if (
+            req.lower() in have
+            or (canon and canon.lower() in have)
+            or cv_id in text_hits.get(req, ())
         ):
             hits.append(req)
-            continue
-        canon = tax.canonicalize(req)
-        if canon and canon.lower() in have:
-            hits.append(req)
     return hits
+
+
+def _phrase_hits(conn: Any, phrases: list[str]) -> dict[str, set[int]]:
+    """CV ids whose text contains each phrase (FTS5 phrase query: no full-text scan)."""
+    out: dict[str, set[int]] = {}
+    for p in phrases:
+        tokens = re.findall(r"[\w+#.]+", p)
+        if not tokens or len(p) < 3:
+            continue
+        q = '"' + " ".join(t.replace('"', "") for t in tokens) + '"'
+        try:
+            out[p] = {
+                r[0] for r in conn.execute("SELECT rowid FROM cv_fts WHERE cv_fts MATCH ?", (q,))
+            }
+        except Exception:  # odd tokens FTS can't parse: just no text hits
+            out[p] = set()
+    return out
 
 
 def experience_score(years: float | None, lo: float | None, hi: float | None) -> float:
@@ -111,19 +127,25 @@ class Shortlister:
         self.reranker = reranker
 
     def rank(
-        self, req: Requirements, jd_text: str, *, limit: int = 50, min_score: float = 0.0
+        self,
+        req: Requirements,
+        jd_text: str,
+        *,
+        limit: int = 50,
+        min_score: float = 0.0,
+        rerank: bool = True,
     ) -> dict[str, Any]:
+        """rerank=False answers in well under a second (embeddings + skills only); the UI shows
+        that immediately, then calls again with rerank=True to refine the order of the top."""
         t0 = time.perf_counter()
         query = req.query_text() or jd_text[:1500]
         with self.db.connect() as conn:
             rows = {
                 r["id"]: r
-                for r in conn.execute(
-                    f"SELECT {SUMMARY_COLUMNS}, text FROM cvs WHERE status='indexed'"
-                )
+                for r in conn.execute(f"SELECT {SUMMARY_COLUMNS} FROM cvs WHERE status='indexed'")
             }
             if not rows:
-                return {"total": 0, "items": [], "timings": {}}
+                return {"total": 0, "items": [], "timings": {}, "refined": rerank}
             ids = list(rows)
 
             # 1) dense: JD summary + start of JD text
@@ -133,6 +155,8 @@ class Shortlister:
             # 2) lexical over skills
             skill_q = " ".join(req.must_have_skills + req.nice_to_have_skills) or query
             lex = self.search.lexical(conn, skill_q, set(ids), limit=300)
+            # 3) free-text requirement phrases, resolved once through the FTS index
+            text_hits = _phrase_hits(conn, req.must_have_skills + req.nice_to_have_skills)
 
         fused: dict[int, float] = {}
         for rank, (cid, _) in enumerate(dense):
@@ -149,21 +173,22 @@ class Shortlister:
             for cid, row in rows.items():
                 if cid in cands:
                     continue
-                hits = _skill_hits(
-                    req.must_have_skills, loads_list(row["skills"]), (row["text"] or "").lower()
-                )
+                hits = _skill_hits(req.must_have_skills, loads_list(row["skills"]), cid, text_hits)
                 if len(hits) >= need:
                     cands[cid] = Candidate(
                         cid, row, cosine=sims.get(cid, 0.0), fused=fused.get(cid, 0)
                     )
         t_retrieve = time.perf_counter() - t0
 
-        # 3) cross-encoder rerank of the best fused candidates
-        order = sorted(cands.values(), key=lambda c: c.fused, reverse=True)
-        top = order[:RERANK_K]
+        # 4) cross-encoder rerank, only for candidates close to the best (adaptive, capped)
+        top: list[Candidate] = []
         t1 = time.perf_counter()
-        if top:
-            docs = [self._doc(c.row) for c in top]
+        if rerank and cands:
+            order = sorted(cands.values(), key=lambda c: c.fused, reverse=True)
+            best_cos = max(c.cosine for c in cands.values())
+            top = [c for c in order if c.cosine >= best_cos - RERANK_MARGIN][:RERANK_K]
+            texts = self._texts([c.id for c in top])
+            docs = [self._doc(c.row, texts.get(c.id, "")) for c in top]
             scores = self.reranker.scores(query, docs)
             for c, s in zip(top, scores, strict=True):
                 c.rerank = float(s)
@@ -183,15 +208,15 @@ class Shortlister:
         for c in cands.values():
             row = c.row
             cv_skills = loads_list(row["skills"])
-            text_lower = (row["text"] or "").lower()
-            must_hits = _skill_hits(req.must_have_skills, cv_skills, text_lower)
-            nice_hits = _skill_hits(req.nice_to_have_skills, cv_skills, text_lower)
+            must_hits = _skill_hits(req.must_have_skills, cv_skills, c.id, text_hits)
+            nice_hits = _skill_hits(req.nice_to_have_skills, cv_skills, c.id, text_hits)
             sem_cos = norm(c.cosine, cos_lo, cos_hi)
-            sem = (
-                0.5 * sem_cos + 0.5 * norm(c.rerank, rr_lo, rr_hi)
-                if c.id in reranked
-                else 0.6 * sem_cos
-            )
+            if not rerank:
+                sem = sem_cos  # quick pass: embedding similarity only
+            elif c.id in reranked:
+                sem = 0.5 * sem_cos + 0.5 * norm(c.rerank, rr_lo, rr_hi)
+            else:
+                sem = 0.6 * sem_cos  # far from the best match: not worth reranking
             parts = {
                 "semantic": sem,
                 "must": len(must_hits) / len(req.must_have_skills) if req.must_have_skills else 1.0,
@@ -223,6 +248,7 @@ class Shortlister:
             "total": len(items),
             "items": items[:limit],
             "weights": WEIGHTS,
+            "refined": rerank,
             "timings": {
                 "retrieve_s": round(t_retrieve, 2),
                 "rerank_s": round(t_rerank, 2),
@@ -231,8 +257,20 @@ class Shortlister:
             },
         }
 
+    def _texts(self, ids: list[int]) -> dict[int, str]:
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        with self.db.connect() as conn:
+            return {
+                r[0]: r[1] or ""
+                for r in conn.execute(
+                    f"SELECT id, substr(text, 1, 2500) FROM cvs WHERE id IN ({marks})", ids
+                )
+            }
+
     @staticmethod
-    def _doc(row: Any) -> str:
+    def _doc(row: Any, text: str) -> str:
         f = CVFields(
             title=row["title"],
             years_exp=row["years_exp"],
@@ -241,7 +279,7 @@ class Shortlister:
             domains=loads_list(row["domains"]),
             summary=row["summary"],
         )
-        return embedding_text(f, row["text"] or "")[:2500]
+        return embedding_text(f, text)[:2500]
 
 
 def _person_key(item: dict[str, Any]) -> str | None:
@@ -270,33 +308,32 @@ def _collapse_duplicates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return keep
 
 
-# --- explanations -------------------------------------------------------------
-EXPLAIN_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "reason": {"type": "string"},
-        "strengths": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
-        "gaps": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
-    },
-    "required": ["reason", "strengths", "gaps"],
-}
-
+# --- explanations (streamed plain text, so the first words appear within about a second) ---
 EXPLAIN_SYSTEM = (
-    "You are a precise recruiting assistant. Compare the candidate's resume with the job "
-    "requirements and return ONLY JSON: 'reason' (max 40 words, neutral, factual), up to 4 "
-    "short 'strengths' and up to 4 short 'gaps'. Base every point on the resume text; never "
-    "invent facts."
+    "You are a precise recruiting assistant. Compare the candidate with the job requirements. "
+    "Answer in exactly three short lines and nothing else:\n"
+    "Verdict: <one neutral sentence, max 25 words>\n"
+    "Strengths: <2-3 short points separated by '; '>\n"
+    "Gaps: <1-3 short points separated by '; ', or 'none'>\n"
+    "Base every point on the resume; never invent facts."
 )
 
 
-def explain(llm: Any, req: Requirements, cv_row: Any) -> dict[str, Any]:
+def _req_brief(req: Requirements) -> str:
+    parts = [
+        f"Role: {req.title}" if req.title else "",
+        f"Must have: {', '.join(req.must_have_skills)}" if req.must_have_skills else "",
+        f"Nice to have: {', '.join(req.nice_to_have_skills)}" if req.nice_to_have_skills else "",
+        f"Experience: {req.min_years:g}+ years" if req.min_years else "",
+        f"Location: {', '.join(req.locations)}" if req.locations else "",
+        f"Industry: {', '.join(req.domains)}" if req.domains else "",
+    ]
+    return "\n".join(p for p in parts if p)
+
+
+def explain_stream(llm: Any, req: Requirements, cv_text: str) -> Iterator[str]:
     user = (
-        f"Job requirements:\n{json.dumps(req.as_dict(), ensure_ascii=False)}\n\n"
-        f"Candidate resume:\n<<<\n{(cv_row['text'] or '')[:5000]}\n>>>"
+        f"Job requirements:\n{_req_brief(req)}\n\n"
+        f"Candidate resume (start):\n<<<\n{cv_text[:3500]}\n>>>"
     )
-    data = llm.json_chat(EXPLAIN_SYSTEM, user, EXPLAIN_SCHEMA, max_tokens=300)
-    return {
-        "reason": str(data.get("reason") or "").strip(),
-        "strengths": [str(s) for s in data.get("strengths") or []][:4],
-        "gaps": [str(s) for s in data.get("gaps") or []][:4],
-    }
+    yield from llm.text_stream(EXPLAIN_SYSTEM, user, max_tokens=160)

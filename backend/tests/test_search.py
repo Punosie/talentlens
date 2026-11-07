@@ -77,14 +77,21 @@ def test_fts_query_builder() -> None:
 def test_llm_stage_refines_and_survives_reindex(indexed: TestClient) -> None:
     st = indexed.app.state.tl
     with st.db.connect() as conn:
-        rows = conn.execute("SELECT extractor, llm_sha, sha256 FROM cvs").fetchall()
-    assert all(r["extractor"] == "llm" and r["llm_sha"] == r["sha256"] for r in rows)
+        rows = conn.execute("SELECT extractor, llm_sha, sha256, confident FROM cvs").fetchall()
+    # every CV is either read by the AI, or confidently read by the rules (AI not needed)
+    assert all(
+        (r["extractor"] == "llm" and r["llm_sha"] == r["sha256"]) or r["confident"] for r in rows
+    )
+    before = {tuple(r) for r in rows}
     calls = st.llm.calls
     indexed.post("/api/index/refresh", params={"full": "true"})
     assert st.queue.wait_idle(120)
-    assert st.llm.calls == calls  # LLM output reused, not recomputed
+    assert st.llm.calls == calls  # nothing recomputed by the LLM
     with st.db.connect() as conn:
-        assert {r[0] for r in conn.execute("SELECT extractor FROM cvs")} == {"llm"}
+        after = {
+            tuple(r) for r in conn.execute("SELECT extractor, llm_sha, sha256, confident FROM cvs")
+        }
+    assert after == before
 
 
 def test_ai_pause(indexed: TestClient) -> None:

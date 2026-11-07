@@ -61,10 +61,76 @@ CV_SYSTEM = (
 )
 
 
-def llm_extract(llm: LLM, text: str, filename: str) -> dict[str, Any]:
+def llm_extract_full(llm: LLM, text: str, filename: str) -> dict[str, Any]:
+    """v0.1 prompt (whole resume, also asks for skills). Kept for benchmarking."""
     body = text[:MAX_LLM_CHARS]
     user = f"Resume file name: {filename}\n\nResume text:\n<<<\n{body}\n>>>"
     return llm.json_chat(CV_SYSTEM, user, CV_SCHEMA, max_tokens=450)
+
+
+# --- compact prompt: ask only for what the rules are weak at --------------------------
+HEADER_CHARS = 2500
+DATE_LINES_CHARS = 2500
+
+CV_SCHEMA_COMPACT: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "current_title": {"type": "string"},
+        "city": {"type": "string"},
+        "country": {"type": "string"},
+        "total_years_experience": {"type": "number"},
+        "domains": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+        "summary": {"type": "string"},
+    },
+    "required": [
+        "name",
+        "current_title",
+        "city",
+        "country",
+        "total_years_experience",
+        "domains",
+        "summary",
+    ],
+}
+
+CV_SYSTEM_COMPACT = (
+    "You read the top of a resume and its job-date lines. Return ONLY JSON:\n"
+    "- name: the candidate's full name (a person, not a company or heading).\n"
+    "- current_title: the job title of the most recent role (e.g. 'Head of Sales'), never a "
+    "section heading, skill list or summary sentence; max 8 words.\n"
+    "- city, country: where the candidate lives/works now; '' if unknown.\n"
+    "- total_years_experience: number. If the resume states a total ('15+ years of experience') "
+    "use it. Otherwise count from the earliest job start date to the latest end date (or today). "
+    "Ignore education dates. 0 if unknown.\n"
+    "- domains: up to 3 industries (e.g. 'Telecommunications', 'Banking', 'Retail').\n"
+    "- summary: one neutral sentence, max 25 words.\n"
+    "Never invent facts."
+)
+
+
+def compact_input(text: str) -> str:
+    """Resume header (name, title, contact, location live here) + lines with job dates."""
+    header = text[:HEADER_CHARS]
+    dated: list[str] = []
+    used = 0
+    for line in text[HEADER_CHARS:].splitlines():
+        s = line.strip()
+        if not s or len(s) > 200:
+            continue
+        if rules._RANGE_RX.search(s) or rules._EXPLICIT_YEARS.search(s):
+            dated.append(s)
+            used += len(s) + 1
+            if used > DATE_LINES_CHARS:
+                break
+    if dated:
+        return f"{header}\n…\n[job date lines]\n" + "\n".join(dated)
+    return header
+
+
+def llm_extract(llm: LLM, text: str, filename: str) -> dict[str, Any]:
+    user = f"File: {filename}\n<<<\n{compact_input(text)}\n>>>"
+    return llm.json_chat(CV_SYSTEM_COMPACT, user, CV_SCHEMA_COMPACT, max_tokens=220)
 
 
 def _s(v: Any) -> str | None:

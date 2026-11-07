@@ -132,6 +132,13 @@ class CVStore:
         out.sort(key=lambda f: f.rel_path.lower())
         return out
 
+    def size_index(self) -> dict[int, list[FileInfo]]:
+        """Files on disk grouped by size, for cheap duplicate checks during bulk imports."""
+        idx: dict[int, list[FileInfo]] = {}
+        for f in self.iter_files():
+            idx.setdefault(f.size, []).append(f)
+        return idx
+
     def save_upload(
         self,
         filename: str,
@@ -139,6 +146,7 @@ class CVStore:
         *,
         max_bytes: int,
         known_hashes: dict[str, str],
+        sizes: dict[int, list[FileInfo]] | None = None,
     ) -> tuple[Path, str]:
         """Persist a NEW resume. Returns (path, sha256).
 
@@ -161,8 +169,13 @@ class CVStore:
         digest = sha256_bytes(data)
         if digest in known_hashes:
             raise DuplicateUpload(known_hashes[digest])
-        for f in self.iter_files():  # unindexed files with the same size
-            if f.size == len(data) and sha256_file(f.path) == digest:
+        same_size = (
+            sizes.get(len(data), [])
+            if sizes is not None
+            else [f for f in self.iter_files() if f.size == len(data)]
+        )
+        for f in same_size:  # files on disk not indexed yet
+            if sha256_file(f.path) == digest:
                 raise DuplicateUpload(f.rel_path)
 
         self.root.mkdir(parents=True, exist_ok=True)
@@ -172,6 +185,11 @@ class CVStore:
             try:
                 with candidate.open("xb") as f:  # exclusive: never overwrite
                     f.write(data)
+                if sizes is not None:
+                    st = candidate.stat()
+                    sizes.setdefault(st.st_size, []).append(
+                        FileInfo(candidate, self.rel(candidate), st.st_size, st.st_mtime)
+                    )
                 return candidate, digest
             except FileExistsError:
                 continue

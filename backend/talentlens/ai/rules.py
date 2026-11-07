@@ -337,12 +337,28 @@ def format_location(city: str | None, country: str | None) -> str | None:
     return city or country
 
 
+def is_confident(
+    text: str, filename: str, name: str | None, title: str | None, city: str | None
+) -> bool:
+    """True when the rules alone are very likely right about the key fields."""
+    from_file = name_from_filename(filename)
+    name_ok = bool(name and from_file and _tokens(name) & _tokens(from_file))
+    title_ok = bool(title and 2 <= len(title.split()) <= 8)
+    years_ok = explicit_years(text) is not None
+    city_ok = bool(
+        city and any(c == city for _, c in taxonomy.gazetteer().find_cities(text[:1500]))
+    )
+    return name_ok and title_ok and years_ok and city_ok
+
+
 def extract(text: str, filename: str) -> CVFields:
     name = extract_name(text, filename)
     title = extract_title(text, name)
     city, country = extract_location(text)
     email, phone = extract_contacts(text)
+    confident = is_confident(text, filename, name, title, city)
     return CVFields(
+        confident=confident,
         name=name,
         email=email,
         phone=phone,

@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     ocr_min_chars_per_page: int = 50
     watch: bool = True
     scan_on_startup: bool = True
+    discover: bool = True  # look for a resume folder automatically on first run
 
     @field_validator("cv_dir", "data_dir", "cv_index_csv", mode="before")
     @classmethod

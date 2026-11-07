@@ -123,9 +123,29 @@ def test_explain_with_mock_llm(indexed: TestClient) -> None:
     r = indexed.post(
         "/api/shortlist/explain", json={"cv_id": data["items"][0]["id"], "requirements": req}
     )
-    assert r.status_code == 200 and r.json()["reason"]
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert r.text.startswith("Verdict: Mock explanation.") and "Gaps:" in r.text
     missing = indexed.post("/api/shortlist/explain", json={"cv_id": 9999, "requirements": req})
     assert missing.status_code == 404
+
+
+def test_quick_then_refined_ranking(indexed: TestClient) -> None:
+    req = indexed.post("/api/jd/parse", data={"text": DATA_JD}).json()
+    body = {"requirements": req["requirements"], "jd_text": req["jd_text"]}
+    quick = indexed.post("/api/shortlist", json={**body, "rerank": False}).json()
+    full = indexed.post("/api/shortlist", json=body).json()
+    assert quick["refined"] is False and quick["timings"]["reranked"] == 0
+    assert full["refined"] is True and 0 < full["timings"]["reranked"] <= 30
+    assert quick["items"][0]["name"] == full["items"][0]["name"] == "Alice Example"
+
+
+def test_shortlist_prioritises_top_results_for_ai(indexed: TestClient) -> None:
+    st = indexed.app.state.tl
+    data = _shortlist(indexed, TELECOM_JD)
+    with st.db.connect() as conn:
+        prio = dict(conn.execute("SELECT id, ai_priority FROM cvs").fetchall())
+    top = data["items"][0]["id"]
+    assert prio[top] > 0 and prio[top] == max(prio.values())
 
 
 def test_saved_shortlists_and_csv(indexed: TestClient) -> None:
@@ -150,6 +170,11 @@ def test_saved_shortlists_and_csv(indexed: TestClient) -> None:
     assert body.splitlines()[0].startswith("rank,score,name")
     assert "'=HYPERLINK(evil)" in body
     assert "attachment" in csv_resp.headers["content-disposition"]
+
+    renamed = indexed.patch(f"/api/shortlists/{sid}", json={"name": "  Data team  "}).json()
+    assert renamed["name"] == "Data team"
+    assert indexed.get("/api/shortlists").json()[0]["name"] == "Data team"
+    assert indexed.patch("/api/shortlists/999", json={"name": "x"}).status_code == 404
 
     assert indexed.delete(f"/api/shortlists/{sid}").status_code == 204
     assert indexed.get(f"/api/shortlists/{sid}").status_code == 404

@@ -21,12 +21,18 @@ from . import get_state
 router = APIRouter(prefix="/api", tags=["settings"])
 State = Annotated[AppState, Depends(get_state)]
 
+# Measured with scripts/bench_ai.py: the 1.5B model is ~2x faster but clearly less accurate.
 AI_MODELS = [
-    {"id": "qwen2.5:1.5b-instruct", "label": "Faster", "hint": "Quick, good for most resumes"},
     {
         "id": "qwen2.5:3b-instruct",
-        "label": "Better",
-        "hint": "More accurate, slower on older laptops",
+        "label": "Best quality (recommended)",
+        "hint": "About 25 seconds per resume on a laptop without a strong graphics card",
+    },
+    {
+        "id": "qwen2.5:1.5b-instruct",
+        "label": "Fastest",
+        "hint": "About twice as fast but noticeably less accurate "
+        "(first run: ollama pull qwen2.5:1.5b-instruct)",
     },
 ]
 

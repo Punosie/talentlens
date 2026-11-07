@@ -86,6 +86,7 @@ class Indexer:
     def run(self, *, full: bool = False, progress: ProgressFn | None = None) -> IndexReport:
         t0 = time.perf_counter()
         report = IndexReport()
+        self.backfill_confidence()
         files = self.store.iter_files()
         report.scanned = len(files)
         on_disk = {f.rel_path: f for f in files}
@@ -220,12 +221,73 @@ class Indexer:
     # ------------------------------------------------------------------
     # Stage 2: LLM refinement (slow; runs in the background, newest first)
     # ------------------------------------------------------------------
+    # CVs that still need the LLM: not done for this content, not already confident by rules
+    _PENDING = (
+        "status='indexed' AND confident=0 AND (llm_sha IS NULL OR llm_sha != sha256) "
+        "AND llm_attempts < 2"
+    )
+
+    def backfill_confidence(self) -> int:
+        """One-time for libraries made before v0.2: mark CVs the rules already read well."""
+        if self.db.get_meta("confidence_v") == "1":
+            return 0
+        from .ai import rules
+
+        marked = 0
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, text, filename, name, title, city FROM cvs WHERE status='indexed' "
+                "AND (llm_sha IS NULL OR llm_sha != sha256)"
+            ).fetchall()
+        ids = [
+            r["id"]
+            for r in rows
+            if rules.is_confident(r["text"] or "", r["filename"], r["name"], r["title"], r["city"])
+        ]
+        if ids:
+            with self.db.write() as conn:
+                conn.executemany("UPDATE cvs SET confident=1 WHERE id=?", [(i,) for i in ids])
+            marked = len(ids)
+        self.db.set_meta("confidence_v", "1")
+        return marked
+
     def pending_llm_count(self) -> int:
         with self.db.connect() as conn:
-            return conn.execute(
-                "SELECT COUNT(*) FROM cvs WHERE status='indexed' "
-                "AND (llm_sha IS NULL OR llm_sha != sha256) AND llm_attempts < 2"
-            ).fetchone()[0]
+            return conn.execute(f"SELECT COUNT(*) FROM cvs WHERE {self._PENDING}").fetchone()[0]
+
+    def prioritize(self, ids: list[int]) -> None:
+        """Ask the background AI to read these CVs next (e.g. top shortlist results)."""
+        if not ids:
+            return
+        stamp = time.time()
+        with self.db.write() as conn:
+            conn.executemany(
+                "UPDATE cvs SET ai_priority=? WHERE id=?",
+                [(stamp - i * 1e-3, cid) for i, cid in enumerate(ids)],  # keep their order
+            )
+
+    def _twin_llm_json(self, conn: Any, row: Any) -> str | None:
+        """An already-read copy of the same person (same email, or same name and near-identical
+        text) lets us reuse its AI result instead of calling the model again."""
+        if row["email"]:
+            twin = conn.execute(
+                "SELECT llm_json FROM cvs WHERE id != ? AND email = ? AND llm_json IS NOT NULL "
+                "AND llm_sha = sha256 LIMIT 1",
+                (row["id"], row["email"]),
+            ).fetchone()
+            if twin:
+                return twin["llm_json"]
+        if row["name"] and row["embedding"] is not None:
+            mine = np.frombuffer(row["embedding"], dtype=np.float32)
+            for t in conn.execute(
+                "SELECT llm_json, embedding FROM cvs WHERE id != ? AND name = ? "
+                "AND llm_json IS NOT NULL AND llm_sha = sha256 AND embedding IS NOT NULL",
+                (row["id"], row["name"]),
+            ):
+                other = np.frombuffer(t["embedding"], dtype=np.float32)
+                if other.shape == mine.shape and float(mine @ other) >= 0.98:
+                    return t["llm_json"]
+        return None
 
     def refine_pending(
         self,
@@ -233,33 +295,39 @@ class Indexer:
         should_stop: Callable[[], bool],
         progress: ProgressFn | None = None,
     ) -> dict[str, int]:
-        """Run LLM extraction for every indexed CV that lacks it. Stops early when asked."""
-        done = failed = 0
+        """Run the LLM for each CV that still needs it, highest priority first, then newest.
+
+        The next CV is chosen fresh each time, so CVs prioritised mid-pass (shortlist results,
+        opened profiles) are read next. Stops between CVs when asked.
+        """
+        done = failed = reused = 0
         if not self.enricher.llm_available():
-            return {"refined": 0, "failed": 0, "skipped": self.pending_llm_count()}
-        with self.db.connect() as conn:
-            ids = [
-                r["id"]
-                for r in conn.execute(
-                    "SELECT id FROM cvs WHERE status='indexed' "
-                    "AND (llm_sha IS NULL OR llm_sha != sha256) AND llm_attempts < 2 "
-                    "ORDER BY added_at DESC, id DESC"
-                )
-            ]
-        total = len(ids)
-        for i, cv_id in enumerate(ids):
-            if should_stop():
-                break
+            return {"refined": 0, "failed": 0, "reused": 0, "skipped": self.pending_llm_count()}
+        total = self.pending_llm_count()
+        tried: set[int] = set()
+        i = 0
+        while not should_stop():
             with self.db.connect() as conn:
+                skip = ",".join(str(x) for x in tried) or "-1"
                 row = conn.execute(
-                    "SELECT id, filename, text, sha256 FROM cvs WHERE id=?", (cv_id,)
+                    "SELECT id, filename, text, sha256, email, name, embedding FROM cvs "
+                    f"WHERE {self._PENDING} AND id NOT IN ({skip}) "
+                    "ORDER BY ai_priority DESC, added_at DESC, id DESC LIMIT 1"
                 ).fetchone()
+                twin = self._twin_llm_json(conn, row) if row is not None else None
             if row is None:
-                continue
+                break
+            cv_id = row["id"]
+            tried.add(cv_id)
             if progress:
-                progress(i, total, row["filename"])
+                progress(i, max(total, i + 1), row["filename"])
+            i += 1
             try:
-                llm_json = self.enricher.llm_extract(row["text"] or "", row["filename"])
+                if twin is not None:
+                    llm_json = json.loads(twin)
+                    reused += 1
+                else:
+                    llm_json = self.enricher.llm_extract(row["text"] or "", row["filename"])
             except Exception as e:
                 log.warning("LLM extraction failed for %s: %s", row["filename"], e)
                 failed += 1
@@ -287,10 +355,10 @@ class Indexer:
             if done % 5 == 0:
                 self._notify()
         if progress:
-            progress(total, total, "")
+            progress(i, max(total, i), "")
         if done:
             self._notify()
-        return {"refined": done, "failed": failed, "skipped": 0}
+        return {"refined": done, "failed": failed, "reused": reused, "skipped": 0}
 
     def _apply_fields(
         self,
@@ -385,6 +453,7 @@ class Indexer:
             "embedding": blob,
             "embed_model": self.enricher.embed_model_name if blob else None,
             "indexed_at": _now(),
+            "confident": int(fields.confident and fields.extractor == "rules"),
         }
         cols = ", ".join(values)
         marks = ", ".join("?" for _ in values)

@@ -81,7 +81,7 @@ class AppState:
         chosen = self.prefs.get("cv_dir")
         if chosen:
             return Path(chosen), "app"
-        for cand in discover_cv_dirs():
+        for cand in discover_cv_dirs() if s.discover else []:
             log.info("Using discovered resume folder %s", cand)
             self.prefs.update(cv_dir=str(cand))
             return cand, "auto"

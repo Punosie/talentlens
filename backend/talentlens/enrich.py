@@ -29,6 +29,9 @@ class CVFields:
     education: list[str] = field(default_factory=list)
     summary: str | None = None
     extractor: str = "none"
+    # rules found name (agreeing with the file name), title, stated years and location:
+    # the local LLM would add little, so it can skip this resume
+    confident: bool = False
 
 
 class Enricher(Protocol):

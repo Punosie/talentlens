@@ -61,6 +61,43 @@ def build(root: Path) -> None:
     (samples / "not-really.pdf").write_bytes(b"this is plain text pretending to be a PDF")
     (samples / "jd.txt").write_text(JD, encoding="utf-8")
 
+    # bulk import samples: a folder with a subfolder and a non-resume file, and a ZIP
+    batch = samples / "batch-folder"
+    (batch / "sub").mkdir(parents=True)
+    make_pdf(
+        batch / "Fiona_Folder.pdf",
+        "Fiona Folder\nHR Business Partner | London, UK\n10 years of experience in talent acquisition.",
+    )
+    make_docx(
+        batch / "sub" / "George_Folder.docx",
+        "George Folder\nSupply Chain Manager | Pune, India\n12 years of experience in logistics and procurement.",
+    )
+    (batch / "notes.txt").write_text("not a resume", encoding="utf-8")
+    import zipfile
+
+    hana = make_pdf(
+        samples / "_hana.pdf",
+        "Hana Zipped\nUX Designer | Toronto, Canada\n6 years of experience with Figma and design systems.",
+    )
+    ivan = make_pdf(
+        samples / "_ivan.pdf",
+        "Ivan Zipped\nFP&A Manager | Mumbai, India\n11 years of experience in budgeting and SAP FICO.",
+    )
+    with zipfile.ZipFile(samples / "resumes.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(hana, "Q3 hiring/Hana_Zipped.pdf")
+        z.write(ivan, "Q3 hiring/Ivan_Zipped.pdf")
+        z.writestr("Q3 hiring/readme.txt", "not a resume")
+    hana.unlink()
+    ivan.unlink()
+
+    # an empty-ish folder people "choose" during onboarding tests
+    choose = root / "choose-me"
+    choose.mkdir()
+    make_pdf(
+        choose / "Julia_Onboard.pdf",
+        "Julia Onboard\nData Analyst | Pune, India\n4 years of experience with SQL and Power BI.",
+    )
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -69,9 +106,25 @@ def main() -> None:
     ap.add_argument(
         "--demo", action="store_true", help="fictional demo library + real embeddings (screenshots)"
     )
+    ap.add_argument(
+        "--first-run", action="store_true", help="no resume folder chosen yet (onboarding tests)"
+    )
     args = ap.parse_args()
     root = Path(args.root)
     build(root)
+    if args.first_run:
+        settings = Settings(
+            data_dir=root / "appdata",
+            port=args.port,
+            llm="mock",
+            embeddings="mock",
+            watch=False,
+            scan_on_startup=True,
+            discover=False,  # never pick up a real folder on the developer's machine
+            _env_file=None,
+        )
+        uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, log_level="warning")
+        return
     if args.demo:
         from tests.demo_data import DEMO_RESUMES
 

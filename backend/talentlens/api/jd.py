@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
@@ -16,7 +17,7 @@ from ..ai.llm import LLMUnavailable
 from ..config import JD_EXTENSIONS
 from ..jd import Requirements, parse_llm, parse_rules
 from ..parsing import ParseError, parse_bytes
-from ..shortlist import Shortlister, explain
+from ..shortlist import Shortlister, explain_stream
 from ..state import AppState
 from ..storage import safe_filename, sniff_matches
 from . import get_state
@@ -46,6 +47,7 @@ class ShortlistRequest(BaseModel):
     requirements: RequirementsModel
     jd_text: str = Field(default="", max_length=MAX_JD_TEXT)
     limit: int = Field(default=50, ge=1, le=200)
+    rerank: bool = True
 
 
 class ExplainRequest(BaseModel):
@@ -120,25 +122,43 @@ async def parse_jd(
 
 @router.post("/shortlist")
 async def shortlist(st: State, body: ShortlistRequest) -> dict[str, Any]:
+    """rerank=false: instant ranking (embeddings + skills). rerank=true: refine the top."""
     req = body.requirements.to_req()
     if not (req.must_have_skills or req.title or req.summary or body.jd_text.strip()):
         raise HTTPException(400, "Add at least one requirement or the JD text")
-    return await run_in_threadpool(_shortlister(st).rank, req, body.jd_text, limit=body.limit)
+    result = await run_in_threadpool(
+        _shortlister(st).rank, req, body.jd_text, limit=body.limit, rerank=body.rerank
+    )
+    # let background smart reading improve the people the user is looking at, first
+    st.indexer.prioritize([i["id"] for i in result["items"][:20]])
+    return result
 
 
 @router.post("/shortlist/explain")
-async def explain_match(st: State, body: ExplainRequest) -> dict[str, Any]:
+async def explain_match(st: State, body: ExplainRequest) -> StreamingResponse:
+    """Streams a 3-line plain-text explanation (Verdict / Strengths / Gaps) as it is written."""
     if not st.llm.available():
-        raise HTTPException(503, "Local AI (Ollama) is not available")
+        raise HTTPException(503, "Smart reading (local AI) is not available right now")
     with st.db.connect() as conn:
-        row = conn.execute("SELECT id, text FROM cvs WHERE id=?", (body.cv_id,)).fetchone()
+        row = conn.execute("SELECT text FROM cvs WHERE id=?", (body.cv_id,)).fetchone()
     if row is None:
         raise HTTPException(404, "Resume not found")
-    try:
-        with st.queue.interactive():
-            return await run_in_threadpool(explain, st.llm, body.requirements.to_req(), row)
-    except LLMUnavailable as e:
-        raise HTTPException(503, f"Local AI failed: {e}") from e
+    req = body.requirements.to_req()
+    queue = st.queue
+
+    def gen() -> Iterator[bytes]:
+        try:
+            with queue.interactive():
+                for piece in explain_stream(st.llm, req, row["text"] or ""):
+                    yield piece.encode("utf-8")
+        except LLMUnavailable:
+            yield b"\n[Smart reading stopped unexpectedly. Please try again.]"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --- saved shortlists -----------------------------------------------------------
@@ -256,6 +276,19 @@ def get_shortlist(st: State, sid: int) -> dict[str, Any]:
 def export_shortlist(st: State, sid: int) -> StreamingResponse:
     s = _get(st, sid)
     return _csv_response(s["results"], s["name"])
+
+
+class RenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/shortlists/{sid}")
+def rename_shortlist(st: State, sid: int, body: RenameRequest) -> dict[str, Any]:
+    with st.db.write() as conn:
+        cur = conn.execute("UPDATE shortlists SET name=? WHERE id=?", (body.name.strip(), sid))
+    if not cur.rowcount:
+        raise HTTPException(404, "Shortlist not found")
+    return {"id": sid, "name": body.name.strip()}
 
 
 @router.delete("/shortlists/{sid}", status_code=204)

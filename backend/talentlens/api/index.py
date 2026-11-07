@@ -40,7 +40,7 @@ def _counts(st: AppState) -> tuple[dict[str, int], int]:
         rows = conn.execute("SELECT status, COUNT(*) AS n FROM cvs GROUP BY status").fetchall()
         ai_done = conn.execute(
             "SELECT COUNT(*) FROM cvs WHERE status='indexed' AND "
-            "(llm_sha = sha256 OR extractor = 'rules-final')"
+            "(llm_sha = sha256 OR confident = 1)"
         ).fetchone()[0]
     counts = {r["status"]: r["n"] for r in rows}
     counts["total"] = sum(counts.values())
