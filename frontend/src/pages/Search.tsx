@@ -69,18 +69,29 @@ export default function SearchPage() {
     if (next.toString() !== sp.toString()) setSp(next, { replace: true })
   }, [q, sp, setSp])
 
-  const update = (fn: (n: URLSearchParams) => void) => {
-    const next = new URLSearchParams(sp)
-    fn(next)
-    setSp(next, { replace: true })
-  }
+  // Always build on the *latest* URL state: quick successive edits (e.g. min then max years)
+  // must not start from a stale snapshot and drop each other.
+  const update = (fn: (n: URLSearchParams) => void) =>
+    setSp(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        fn(next)
+        return next
+      },
+      { replace: true },
+    )
   const setList = (key: string, values: string[]) =>
     update((n) => {
       n.delete(key)
       values.forEach((v) => n.append(key, v))
     })
   const setOne = (key: string, value: string | null) => update((n) => (value ? n.set(key, value) : n.delete(key)))
-  const removeOne = (key: string, value: string) => setList(key, sp.getAll(key).filter((v) => v !== value))
+  const removeOne = (key: string, value: string) =>
+    update((n) => {
+      const keep = n.getAll(key).filter((v) => v !== value)
+      n.delete(key)
+      keep.forEach((v) => n.append(key, v))
+    })
 
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets })
   const results = useInfiniteQuery({
