@@ -46,7 +46,7 @@ export type Facets = {
 }
 
 export type IndexStatus = {
-  state: 'idle' | 'queued' | 'running' | 'enhancing'
+  state: 'idle' | 'queued' | 'running' | 'enhancing' | 'no_folder'
   kind: string | null
   reason: string | null
   total: number
@@ -59,6 +59,8 @@ export type IndexStatus = {
   errors: { file: string; error: string }[]
   ai_pending: number
   ai_paused: boolean
+  ai_done: number
+  ai_total: number
   counts: Record<string, number>
   last_index_at: string | null
 }
@@ -66,8 +68,9 @@ export type IndexStatus = {
 export type Health = {
   status: string
   version: string
-  cv_dir: string
+  cv_dir: string | null
   cv_dir_exists: boolean
+  needs_setup: boolean
   llm: { mode: string; model?: string; available: boolean; error: string | null }
   embed_model: string
 }
@@ -114,6 +117,7 @@ export type ShortlistResult = {
   items: RankedCV[]
   weights: Breakdown
   timings: Record<string, number>
+  refined: boolean
 }
 
 export type UploadResult = {
@@ -122,6 +126,64 @@ export type UploadResult = {
 }
 
 export type SavedShortlist = { id: number; name: string; created_at: string; count: number; title: string | null }
+
+export type AppSettings = {
+  version: string
+  platform: 'windows' | 'mac' | 'linux'
+  cv_dir: string | null
+  cv_dir_source: 'config' | 'app' | 'auto' | 'none'
+  cv_dir_locked: boolean
+  cv_dir_exists: boolean
+  provenance_csv: string | null
+  data_dir: string
+  onboarded: boolean
+  ai: {
+    enabled: boolean
+    locked: boolean
+    paused: boolean
+    model: string | null
+    models: { id: string; label: string; hint: string }[]
+    mode: string
+    available: boolean
+    error: string | null
+  }
+}
+
+export type BulkResult = {
+  filename: string
+  status: 'added' | 'duplicate' | 'rejected' | 'skipped'
+  message: string
+  saved_as?: string
+  rel_path?: string
+}
+
+export type FileState = { state: 'reading' | 'ready' | 'unreadable'; id?: number; name?: string | null }
+
+/** Upload one batch with real upload progress (fetch can't report it; XHR can). */
+export function uploadWithProgress(
+  files: File[],
+  onProgress: (fraction: number) => void,
+): Promise<{ added: number; summary: Record<string, number>; results: BulkResult[] }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('files', f, f.name))
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/cvs')
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let body: unknown = null
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        /* not JSON */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as never)
+      else reject(new ApiError(xhr.status, (body as { detail?: string })?.detail ?? 'Upload failed'))
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'Could not reach TalentLens. Is it still running?'))
+    xhr.send(fd)
+  })
+}
 
 export class ApiError extends Error {
   status: number
@@ -189,10 +251,31 @@ export const api = {
       body: fd,
     })
   },
-  shortlist: (requirements: Requirements, jd_text: string, limit = 50) =>
-    request<ShortlistResult>('/api/shortlist', json({ requirements, jd_text, limit })),
-  explain: (cv_id: number, requirements: Requirements) =>
-    request<{ reason: string; strengths: string[]; gaps: string[] }>('/api/shortlist/explain', json({ cv_id, requirements })),
+  shortlist: (requirements: Requirements, jd_text: string, limit = 50, rerank = true) =>
+    request<ShortlistResult>('/api/shortlist', json({ requirements, jd_text, limit, rerank })),
+  /** Streams the plain-text explanation; onText gets the full text so far. */
+  explainStream: async (cv_id: number, requirements: Requirements, onText: (t: string) => void) => {
+    const res = await fetch('/api/shortlist/explain', json({ cv_id, requirements }))
+    if (!res.ok || !res.body) {
+      let msg = 'Could not explain this match'
+      try {
+        msg = (await res.json()).detail ?? msg
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(res.status, msg)
+    }
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += dec.decode(value, { stream: true })
+      onText(text)
+    }
+    return text
+  },
   saveShortlist: (body: { name: string; jd_text: string; requirements: Requirements; results: RankedCV[] }) =>
     request<{ id: number; name: string }>('/api/shortlists', json(body)),
   shortlists: () => request<SavedShortlist[]>('/api/shortlists'),
@@ -201,6 +284,25 @@ export const api = {
       `/api/shortlists/${id}`,
     ),
   deleteShortlist: (id: number) => request<void>(`/api/shortlists/${id}`, { method: 'DELETE' }),
+  renameShortlist: (id: number, name: string) =>
+    request<{ id: number; name: string }>(`/api/shortlists/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+  recent: (limit = 6) => request<{ total: number; items: CVSummary[] }>(`/api/cvs${qs({ limit })}`),
+  filesStatus: (paths: string[]) => request<Record<string, FileState>>(`/api/cvs/status${qs({ paths })}`),
+  settings: () => request<AppSettings>('/api/settings'),
+  updateSettings: (patch: Partial<{ cv_dir: string; ai_enabled: boolean; ollama_model: string; onboarded: boolean }>) =>
+    request<AppSettings>('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  checkFolder: (path: string) =>
+    request<{ ok: boolean; path?: string; count: number; message: string }>('/api/settings/check-folder', json({ path })),
+  pickFolder: () => request<{ path: string | null; cancelled: boolean }>('/api/system/pick-folder', { method: 'POST' }),
+  revealFolder: () => request<{ ok: boolean }>('/api/system/reveal', { method: 'POST' }),
   exportUrl: (id: number) => `/api/shortlists/${id}/export.csv`,
   exportUnsaved: async (body: { name: string; jd_text: string; requirements: Requirements; results: RankedCV[] }) => {
     const res = await fetch('/api/shortlist/export', json(body))

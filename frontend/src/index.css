@@ -19,7 +19,11 @@
   --mark: #f3d54e;
   --mark-soft: #faf0b8;
   --danger: #a3361f;
+  --danger-soft: #f7e4df;
   --ok: #2f6b3a;
+  --ok-soft: #e1efe3;
+  --shadow-1: 0 1px 2px rgb(16 32 33 / 0.06), 0 1px 1px rgb(16 32 33 / 0.04);
+  --shadow-2: 0 12px 32px -8px rgb(16 32 33 / 0.18), 0 2px 6px rgb(16 32 33 / 0.06);
   --seg-semantic: #0e3b3c;
   --seg-must: #2f7a74;
   --seg-nice: #7fb3ac;
@@ -43,7 +47,11 @@
   --mark: #e5c643;
   --mark-soft: #4a4116;
   --danger: #ef8a6f;
+  --danger-soft: #3a211b;
   --ok: #8fd19e;
+  --ok-soft: #1b3122;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.4);
   --seg-semantic: #7cc3b8;
   --seg-must: #4fa59b;
   --seg-nice: #2f6c66;
@@ -68,7 +76,49 @@
   --color-mark: var(--mark);
   --color-mark-soft: var(--mark-soft);
   --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --shadow-e1: var(--shadow-1);
+  --shadow-e2: var(--shadow-2);
+  --radius-control: 6px;
+  --radius-panel: 10px;
+}
+
+@keyframes tl-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tl-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+.tl-avatar {
+  background: hsl(var(--av-h) 30% 88%);
+  color: hsl(var(--av-h) 35% 25%);
+}
+.dark .tl-avatar {
+  background: hsl(var(--av-h) 22% 26%);
+  color: hsl(var(--av-h) 40% 86%);
+}
+.tl-enter {
+  animation: tl-fade-in 150ms ease-out both;
+}
+.tl-skeleton {
+  background: linear-gradient(90deg, var(--sunken) 0, var(--line) 40%, var(--sunken) 80%);
+  background-size: 200px 100%;
+  animation: tl-shimmer 1.2s linear infinite;
+  border-radius: 4px;
 }
 
 html,

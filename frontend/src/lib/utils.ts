@@ -22,6 +22,36 @@ export function displayName(cv: { name: string | null; filename: string }): stri
   return cv.name || cv.filename.replace(/\.(pdf|docx?|txt)$/i, '')
 }
 
+/** Plain-language match quality for a 0-100 score. */
+export function matchLabel(score: number): { label: string; tone: 'excellent' | 'strong' | 'fair' | 'weak' } {
+  if (score >= 75) return { label: 'Excellent match', tone: 'excellent' }
+  if (score >= 60) return { label: 'Strong match', tone: 'strong' }
+  if (score >= 45) return { label: 'Fair match', tone: 'fair' }
+  return { label: 'Weak match', tone: 'weak' }
+}
+
+/** One readable sentence: "Has 5 of 6 must-have skills · 14 yrs (needs 12+) · in Riyadh". */
+export function matchReason(
+  cv: { matched_must: string[]; missing_must: string[]; years_exp: number | null; city?: string | null; country?: string | null; location: string | null },
+  req: { min_years: number | null; max_years: number | null; locations: string[]; must_have_skills: string[] },
+): string {
+  const parts: string[] = []
+  const nMust = req.must_have_skills.length
+  if (nMust) parts.push(`Has ${cv.matched_must.length} of ${nMust} must-have skill${nMust === 1 ? '' : 's'}`)
+  if (req.min_years || req.max_years) {
+    const need = req.min_years && req.max_years ? `${req.min_years}–${req.max_years}` : req.min_years ? `${req.min_years}+` : `≤${req.max_years}`
+    parts.push(cv.years_exp != null ? `${years(cv.years_exp)} (needs ${need})` : `experience unknown (needs ${need})`)
+  } else if (cv.years_exp != null) {
+    parts.push(years(cv.years_exp))
+  }
+  if (req.locations.length) {
+    const want = req.locations.map((l) => l.toLowerCase())
+    const here = [cv.city, cv.country].filter(Boolean).map((x) => x!.toLowerCase())
+    parts.push(here.some((h) => want.includes(h)) ? `in ${cv.city || cv.country}` : cv.location ? `based in ${cv.location}` : 'location unknown')
+  }
+  return parts.join(' · ')
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
