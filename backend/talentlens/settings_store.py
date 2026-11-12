@@ -18,6 +18,7 @@ DEFAULTS: dict[str, Any] = {
     "ai_paused": False,  # background smart reading paused
     "ollama_model": None,  # None = use config default
     "onboarded": False,  # first-run guide completed
+    "mongodb_uri": None,  # connections database chosen in the app
 }
 
 

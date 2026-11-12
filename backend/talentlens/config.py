@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     scan_on_startup: bool = True
     discover: bool = True  # look for a resume folder automatically on first run
 
+    # Connections database (MongoDB). Usually set in the app (Settings); env/.env locks it.
+    mongodb_uri: str | None = None
+    mongodb_db: str = "linkedin"
+    mongodb_collection: str = "connections"
+    connections_sync_minutes: int = 15
+
     @field_validator("cv_dir", "data_dir", "cv_index_csv", mode="before")
     @classmethod
     def _expand(cls, v: object) -> object:
@@ -125,6 +131,10 @@ class Settings(BaseSettings):
     def cv_dir_locked(self) -> bool:
         """True when the folder comes from an env var, .env or code (the UI must not change it)."""
         return "cv_dir" in self.model_fields_set and self.cv_dir is not None
+
+    @property
+    def mongodb_locked(self) -> bool:
+        return "mongodb_uri" in self.model_fields_set
 
     @property
     def llm_locked(self) -> bool:

@@ -9,11 +9,13 @@ import hashlib
 import logging
 import os
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from .ai.embed import Embedder
 from .config import CV_EXTENSIONS, Settings
+from .connections import ConnectionsSync
 from .db import Database
 from .enrich import Enricher
 from .indexer import Indexer
@@ -76,6 +78,8 @@ class Library:
     search: SearchEngine
     provenance: Provenance
     watcher: FolderWatcher | None = None
+    connections: ConnectionsSync | None = None
+    _timer: threading.Event | None = None
 
     @classmethod
     def open(
@@ -86,6 +90,7 @@ class Library:
         embedder: Embedder,
         *,
         ai_paused: bool = False,
+        mongodb_uri: str | None = None,
     ) -> Library:
         lib_dir = settings.libraries_dir / library_key(folder)
         lib_dir.mkdir(parents=True, exist_ok=True)
@@ -101,7 +106,19 @@ class Library:
         indexer.listeners.append(search.on_index_changed)
         queue = IndexQueue(indexer)
         queue.ai_paused = ai_paused
+        connections = None
+        if mongodb_uri:
+            connections = ConnectionsSync(
+                db,
+                indexer,
+                mongodb_uri,
+                database=settings.mongodb_db,
+                collection=settings.mongodb_collection,
+            )
+            queue.after_scan.append(connections.run)
         return cls(
+            connections=connections,
+            sync_minutes=settings.connections_sync_minutes,
             folder=folder,
             db=db,
             store=store,
@@ -111,6 +128,8 @@ class Library:
             provenance=Provenance(settings.provenance_csv_for(folder)),
         )
 
+    sync_minutes: int = 15
+
     def start(self, *, watch: bool, scan: bool) -> None:
         self.queue.start()
         if watch:
@@ -118,8 +137,22 @@ class Library:
             self.watcher.start()
         if scan:
             self.queue.request(reason="startup")
+        if self.connections and self.sync_minutes > 0:
+            stop = threading.Event()
+            self._timer = stop
+
+            def tick() -> None:
+                while not stop.wait(self.sync_minutes * 60):
+                    self.queue.request(reason="connections sync")
+
+            threading.Thread(target=tick, name="talentlens-connections", daemon=True).start()
 
     def stop(self) -> None:
+        if self._timer:
+            self._timer.set()
+            self._timer = None
+        if self.connections:
+            self.connections.close()
         if self.watcher:
             self.watcher.stop()
             self.watcher = None

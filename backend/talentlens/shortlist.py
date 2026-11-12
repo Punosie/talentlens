@@ -25,7 +25,7 @@ from .db import Database, loads_list
 from .enrich import CVFields
 from .indexer import embedding_text
 from .jd import Requirements
-from .search import RRF_K, SearchEngine
+from .search import RRF_K, Filters, SearchEngine
 from .serializers import SUMMARY_COLUMNS, cv_summary
 
 WEIGHTS = {
@@ -134,15 +134,20 @@ class Shortlister:
         limit: int = 50,
         min_score: float = 0.0,
         rerank: bool = True,
+        sources: list[str] | None = None,
+        owners: list[str] | None = None,
     ) -> dict[str, Any]:
         """rerank=False answers in well under a second (embeddings + skills only); the UI shows
         that immediately, then calls again with rerank=True to refine the order of the top."""
         t0 = time.perf_counter()
         query = req.query_text() or jd_text[:1500]
+        scope_sql, scope_args = Filters(sources=sources or [], owners=owners or []).sql()
         with self.db.connect() as conn:
             rows = {
                 r["id"]: r
-                for r in conn.execute(f"SELECT {SUMMARY_COLUMNS} FROM cvs WHERE status='indexed'")
+                for r in conn.execute(
+                    f"SELECT {SUMMARY_COLUMNS} FROM cvs c WHERE {scope_sql}", scope_args
+                )
             }
             if not rows:
                 return {"total": 0, "items": [], "timings": {}, "refined": rerank}
@@ -283,6 +288,8 @@ class Shortlister:
 
 
 def _person_key(item: dict[str, Any]) -> str | None:
+    if item.get("person_id"):  # same person in the connections database (LinkedIn + their CV)
+        return "p:" + str(item["person_id"]).lower()
     if item.get("email"):
         return "e:" + item["email"].lower()
     name = re.sub(r"[^a-z]", "", (item.get("name") or "").lower())
@@ -299,7 +306,7 @@ def _collapse_duplicates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = _person_key(it)
         if key and key in by_key:
             by_key[key].setdefault("other_files", []).append(
-                {"id": it["id"], "filename": it["filename"]}
+                {"id": it["id"], "filename": it["filename"], "source": it.get("source", "file")}
             )
             continue
         if key:

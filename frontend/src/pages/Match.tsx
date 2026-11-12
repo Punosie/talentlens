@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Download, FileText, ListChecks, Pencil, Save, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { CandidateProfile } from '../components/CandidateProfile'
+import { CandidateProfile, SourceBadges } from '../components/CandidateProfile'
 import { FacetPicker } from '../components/FacetPicker'
 import { SEGMENTS, ScoreBar } from '../components/ScoreBar'
 import { Avatar, Button, Card, Chip, Empty, HelpDot, Input, Label, Modal, Skeleton, Spinner, Textarea, useToast } from '../components/ui'
@@ -94,16 +94,20 @@ export default function MatchPage() {
   const health = useQuery({ queryKey: ['health'], queryFn: api.health })
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets })
   const llmOk = !!health.data?.llm.available
+  const hasLinkedIn = (facets.data?.sources ?? []).some((s) => s.value === 'linkedin' && s.count > 0)
+  const [pool, setPool] = useState<'' | 'file' | 'linkedin'>('')
+  const [via, setVia] = useState<string[]>([])
+  const scope = { sources: pool ? [pool] : [], owners: pool === 'file' ? [] : via }
 
   // --- ranking: instant first, refined second -------------------------------------
   const [refining, setRefining] = useState(false)
   const rank = useMutation({
     mutationFn: async ({ r, jd }: { r: Requirements; jd: string }) => {
-      const quick = await api.shortlist(r, jd, 100, false)
+      const quick = await api.shortlist(r, jd, 100, false, scope)
       setResult(quick)
       setRefining(true)
       try {
-        return await api.shortlist(r, jd, 100, true)
+        return await api.shortlist(r, jd, 100, true, scope)
       } finally {
         setRefining(false)
       }
@@ -304,6 +308,35 @@ export default function MatchPage() {
             <Group label="Industry" hint="Experience in this industry scores higher.">
               <FacetPicker label="Industry" testId="req-domain" options={facets.data?.domains ?? []} selected={req.domains} onChange={(v) => edit({ domains: v })} />
             </Group>
+            {hasLinkedIn && (
+              <Group label="Search in" hint="Your resumes, your LinkedIn connections, or both.">
+                <div className="flex rounded-md border border-line p-0.5 text-[13px]" role="group" aria-label="Search in">
+                  {(
+                    [
+                      ['', 'Everyone'],
+                      ['file', 'Resumes'],
+                      ['linkedin', 'LinkedIn connections'],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <button
+                      key={v || 'all'}
+                      type="button"
+                      aria-pressed={pool === v}
+                      data-testid={`match-pool-${v || 'all'}`}
+                      onClick={() => setPool(v)}
+                      className={cn('flex-1 rounded px-2 py-1', pool === v ? 'bg-ink text-on-ink' : 'text-muted hover:text-text')}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {pool !== 'file' && (facets.data?.owners?.length ?? 0) > 1 && (
+                  <div className="mt-2">
+                    <FacetPicker label="Connected via" testId="match-owner" options={facets.data?.owners ?? []} selected={via} onChange={setVia} placeholder="Any LinkedIn account…" />
+                  </div>
+                )}
+              </Group>
+            )}
           </div>
 
           <details className="mt-6 text-sm">
@@ -586,9 +619,12 @@ function CandidateRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
-              <button type="button" onClick={onOpen} className="text-left text-[16px] font-semibold hover:underline hover:underline-offset-4">
-                {name}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <button type="button" onClick={onOpen} className="text-left text-[16px] font-semibold hover:underline hover:underline-offset-4">
+                  {name}
+                </button>
+                <SourceBadges cv={cv} />
+              </div>
               <p className="truncate text-[14px] text-muted">{cv.title || 'Job title not found'}</p>
             </div>
             <div className="flex flex-col items-end gap-1">

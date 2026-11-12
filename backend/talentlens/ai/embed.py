@@ -17,14 +17,49 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 log = logging.getLogger(__name__)
 
 
-def load_cached_first(cls: Any, model_name: str, cache_dir: Path) -> Any:
-    """Load a fastembed model from the local cache without touching the network (works
-    offline). Only if it is not cached yet, download it."""
+_GPU: bool | None = None
+
+
+def gpu_available() -> bool:
+    """True when an NVIDIA GPU can run the models (CUDA build of ONNX Runtime installed and its
+    libraries load). TALENTLENS_DEVICE=cpu turns it off. Checked once per process."""
+    global _GPU
+    if _GPU is None:
+        _GPU = False
+        if os.environ.get("TALENTLENS_DEVICE", "auto").strip().lower() != "cpu":
+            try:
+                import onnxruntime as ort
+
+                if "CUDAExecutionProvider" in ort.get_available_providers():
+                    if hasattr(ort, "preload_dlls"):
+                        ort.preload_dlls()  # CUDA/cuDNN from the nvidia-* wheels
+                    _GPU = True
+            except Exception:
+                log.info("GPU not usable; running models on the CPU", exc_info=True)
+    return _GPU
+
+
+def _load(cls: Any, model_name: str, cache_dir: Path, extra: dict[str, Any]) -> Any:
+    """Load from the local cache without touching the network (works offline). Only if it is
+    not cached yet, download it."""
     try:
-        return cls(model_name, cache_dir=str(cache_dir), local_files_only=True)
+        return cls(model_name, cache_dir=str(cache_dir), local_files_only=True, **extra)
     except Exception:
-        log.info("Model %s not cached yet; downloading", model_name)
-        return cls(model_name, cache_dir=str(cache_dir))
+        log.info("Model %s not cached yet (or failed to load); trying a download", model_name)
+        return cls(model_name, cache_dir=str(cache_dir), **extra)
+
+
+def load_cached_first(cls: Any, model_name: str, cache_dir: Path) -> Any:
+    """Load a fastembed model, on the GPU when one is available, otherwise (or if the GPU
+    load fails for any reason) on the CPU. Never fails just because of the GPU."""
+    if gpu_available():
+        try:
+            model = _load(cls, model_name, cache_dir, {"cuda": True})
+            log.info("Model %s running on the GPU", model_name)
+            return model
+        except Exception:
+            log.warning("Could not load %s on the GPU; using the CPU", model_name, exc_info=True)
+    return _load(cls, model_name, cache_dir, {})
 
 
 # bge-*-v1.5 retrieval works best with this instruction on the QUERY side only
@@ -66,7 +101,7 @@ class FastEmbedder:
     def embed_documents(self, texts: list[str]) -> np.ndarray:
         model = self._get()
         with self._lock:
-            vecs = list(model.embed(texts, batch_size=16))
+            vecs = list(model.embed(texts, batch_size=64 if gpu_available() else 16))
         return _l2(np.vstack(vecs))
 
     def embed_query(self, text: str) -> np.ndarray:

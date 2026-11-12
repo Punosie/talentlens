@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FolderOpen, Lock, Monitor, Moon, RefreshCw, Sparkles, Sun } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { ConnectionsSettings } from '../components/ConnectionsSettings'
 import { FolderPicker } from '../components/FolderPicker'
 import { Button, Card, ConfirmDialog, PageHeader, Skeleton, useToast } from '../components/ui'
 import { api } from '../lib/api'
@@ -182,6 +183,13 @@ export default function SettingsPage() {
               </>
             )}
             {d.ai.locked && <p className="mt-3 text-[12.5px] text-muted">Set in the configuration file (.env).</p>}
+          </Section>
+
+          <Section
+            title="Connections database"
+            description="Bring in your LinkedIn connections from MongoDB so you can search and match them with your resumes. Resumes you add here are saved to the database too, linked to the right person."
+          >
+            <ConnectionsSettings settings={d} />
           </Section>
 
           <Section title="Appearance" description="Light, dark, or follow your computer's setting.">

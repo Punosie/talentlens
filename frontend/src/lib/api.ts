@@ -25,6 +25,11 @@ export type CVSummary = {
   score?: number
   snippet?: string | null
   matched_skills?: string[]
+  /** file = resume on disk, linkedin = profile synced from the connections database */
+  source?: 'file' | 'linkedin'
+  owners?: string[]
+  profile_url?: string | null
+  person_id?: string | null
 }
 
 export type CVDetail = CVSummary & {
@@ -38,6 +43,8 @@ export type CVDetail = CVSummary & {
 
 export type Facet = { value: string; count: number }
 export type Facets = {
+  sources?: Facet[]
+  owners?: Facet[]
   skills: Facet[]
   domains: Facet[]
   countries: Facet[]
@@ -83,6 +90,8 @@ export type SearchParams = {
   years_max?: number | null
   location?: string[]
   domain?: string[]
+  source?: ('file' | 'linkedin')[]
+  owner?: string[]
   sort?: 'relevance' | 'recent' | 'experience' | 'name'
   limit?: number
   offset?: number
@@ -109,7 +118,7 @@ export type RankedCV = CVSummary & {
   matched_must: string[]
   missing_must: string[]
   matched_nice: string[]
-  other_files?: { id: number; filename: string }[]
+  other_files?: { id: number; filename: string; source?: string }[]
 }
 
 export type ShortlistResult = {
@@ -147,7 +156,21 @@ export type AppSettings = {
     available: boolean
     error: string | null
   }
+  connections: ConnectionsStatus & { locked: boolean; host: string | null }
 }
+
+export type ConnectionsStatus = {
+  configured: boolean
+  state: 'idle' | 'pulling' | 'pushing' | 'error' | 'off'
+  last_pull_at?: string | null
+  last_push_at?: string | null
+  profiles?: number
+  last_changes?: Record<string, number>
+  cvs_pushed?: number
+  error?: string | null
+}
+
+export type MatchScope = { sources?: ('file' | 'linkedin')[]; owners?: string[] }
 
 export type BulkResult = {
   filename: string
@@ -251,8 +274,8 @@ export const api = {
       body: fd,
     })
   },
-  shortlist: (requirements: Requirements, jd_text: string, limit = 50, rerank = true) =>
-    request<ShortlistResult>('/api/shortlist', json({ requirements, jd_text, limit, rerank })),
+  shortlist: (requirements: Requirements, jd_text: string, limit = 50, rerank = true, scope: MatchScope = {}) =>
+    request<ShortlistResult>('/api/shortlist', json({ requirements, jd_text, limit, rerank, ...scope })),
   /** Streams the plain-text explanation; onText gets the full text so far. */
   explainStream: async (cv_id: number, requirements: Requirements, onText: (t: string) => void) => {
     const res = await fetch('/api/shortlist/explain', json({ cv_id, requirements }))
@@ -293,7 +316,9 @@ export const api = {
   recent: (limit = 6) => request<{ total: number; items: CVSummary[] }>(`/api/cvs${qs({ limit })}`),
   filesStatus: (paths: string[]) => request<Record<string, FileState>>(`/api/cvs/status${qs({ paths })}`),
   settings: () => request<AppSettings>('/api/settings'),
-  updateSettings: (patch: Partial<{ cv_dir: string; ai_enabled: boolean; ollama_model: string; onboarded: boolean }>) =>
+  updateSettings: (
+    patch: Partial<{ cv_dir: string; ai_enabled: boolean; ollama_model: string; onboarded: boolean; mongodb_uri: string }>,
+  ) =>
     request<AppSettings>('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -302,6 +327,9 @@ export const api = {
   checkFolder: (path: string) =>
     request<{ ok: boolean; path?: string; count: number; message: string }>('/api/settings/check-folder', json({ path })),
   pickFolder: () => request<{ path: string | null; cancelled: boolean }>('/api/system/pick-folder', { method: 'POST' }),
+  connectionsStatus: () => request<ConnectionsStatus>('/api/connections/status'),
+  syncConnections: (full = false) =>
+    request<ConnectionsStatus>(`/api/connections/sync${qs({ full })}`, { method: 'POST' }),
   revealFolder: () => request<{ ok: boolean }>('/api/system/reveal', { method: 'POST' }),
   exportUrl: (id: number) => `/api/shortlists/${id}/export.csv`,
   exportUnsaved: async (body: { name: string; jd_text: string; requirements: Requirements; results: RankedCV[] }) => {

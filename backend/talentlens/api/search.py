@@ -23,6 +23,8 @@ def search(
     location: Annotated[list[str] | None, Query()] = None,
     domain: Annotated[list[str] | None, Query()] = None,
     ext: Annotated[list[str] | None, Query()] = None,
+    source: Annotated[list[Literal["file", "linkedin"]] | None, Query()] = None,
+    owner: Annotated[list[str] | None, Query(max_length=100)] = None,
     include_unreadable: bool = False,
     sort: Literal["relevance", "recent", "experience", "name"] = "relevance",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -37,6 +39,8 @@ def search(
         domains=domain or [],
         exts=ext or [],
         include_unreadable=include_unreadable,
+        sources=source or [],
+        owners=owner or [],
     )
     return st.search.search(q, filters, sort=sort, limit=limit, offset=offset)
 

@@ -7,6 +7,9 @@ TalentLens is a private resume library and job-matching tool. It runs entirely o
 - **Match to a job:** paste or upload a job description. TalentLens reads the requirements, which you can adjust, and ranks every candidate with a clear match label, a one-line reason and a score breakdown. Save lists and export them to Excel (CSV).
 - **Private by design:** OCR, search and the AI ("smart reading") all run on your computer. Nothing is uploaded, and it works offline once installed.
 
+- **Your LinkedIn connections too (optional):** connect a MongoDB "connections database" in **Settings**. Your connections become searchable and matchable next to your resumes, each showing which LinkedIn account they're connected **via**. Resumes you add are saved back to the database, linked to the matching person when the CV contains their LinkedIn URL. Matching and AI still run on your computer; only the database lives in MongoDB.
+- **Uses your NVIDIA GPU on Windows** for search embeddings and re-ranking when one is available (about 70× faster than the CPU for large imports), and falls back to the CPU automatically. Set `TALENTLENS_DEVICE=cpu` to force the CPU.
+
 ![Match candidates to a job](docs/images/shortlist.png)
 
 <sub>All screenshots use **fictional demo resumes** (`backend/tests/demo_data.py`); no real candidate data is shown.</sub>

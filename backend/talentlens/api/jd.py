@@ -48,6 +48,8 @@ class ShortlistRequest(BaseModel):
     jd_text: str = Field(default="", max_length=MAX_JD_TEXT)
     limit: int = Field(default=50, ge=1, le=200)
     rerank: bool = True
+    sources: list[Literal["file", "linkedin"]] = Field(default_factory=list)
+    owners: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ExplainRequest(BaseModel):
@@ -127,7 +129,13 @@ async def shortlist(st: State, body: ShortlistRequest) -> dict[str, Any]:
     if not (req.must_have_skills or req.title or req.summary or body.jd_text.strip()):
         raise HTTPException(400, "Add at least one requirement or the JD text")
     result = await run_in_threadpool(
-        _shortlister(st).rank, req, body.jd_text, limit=body.limit, rerank=body.rerank
+        _shortlister(st).rank,
+        req,
+        body.jd_text,
+        limit=body.limit,
+        rerank=body.rerank,
+        sources=body.sources,
+        owners=body.owners,
     )
     # let background smart reading improve the people the user is looking at, first
     st.indexer.prioritize([i["id"] for i in result["items"][:20]])

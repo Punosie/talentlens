@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -47,6 +47,8 @@ class IndexQueue:
         self._stop = False
         self.ai_paused = False
         self._interactive = 0
+        # extra work after each scan, e.g. connections sync: fn(full, progress) -> dict
+        self.after_scan: list[Callable[..., dict]] = []
         self._thread = threading.Thread(target=self._loop, name="talentlens-indexer", daemon=True)
 
     # --- lifecycle -------------------------------------------------------
@@ -137,6 +139,13 @@ class IndexQueue:
             except Exception as e:
                 log.exception("Index job crashed")
                 report_dict = {"fatal": str(e)}
+            for hook in self.after_scan:
+                try:
+                    extra = hook(full=kind == "full", progress=self._progress)
+                    if extra:
+                        report_dict = {**report_dict, "connections": extra}
+                except Exception:
+                    log.exception("After-scan hook failed")
             with self._cv:
                 # state stays "running" until _enhance() decides what happens next, so
                 # observers never see a transient "idle" between the two stages
