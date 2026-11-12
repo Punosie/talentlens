@@ -50,8 +50,10 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def embedding_text(f: CVFields, text: str) -> str:
-    """What we embed: the structured highlights first, then the start of the resume."""
+def embedding_text(f: CVFields, text: str, chars: int = 6000) -> str:
+    """What we embed: the structured highlights first, then the start of the resume.
+    chars < 6000 (CPU): the whole text is capped there; the model only reads ~512 tokens
+    anyway, and a shorter focused input embeds several times faster."""
     head = " | ".join(
         x
         for x in (
@@ -64,6 +66,8 @@ def embedding_text(f: CVFields, text: str) -> str:
         )
         if x
     )
+    if chars < 6000:
+        return (f"{head}\n\n{text}" if head else text)[:chars]
     return f"{head}\n\n{text[:6000]}" if head else text[:6000]
 
 
@@ -204,7 +208,8 @@ class Indexer:
         return "indexed"
 
     def _embed(self, fields: CVFields, text: str) -> bytes | None:
-        emb = self.enricher.embed_documents([embedding_text(fields, text)])
+        chars = getattr(self.enricher, "embed_chars", 6000)
+        emb = self.enricher.embed_documents([embedding_text(fields, text, chars)])
         return emb[0].astype(np.float32).tobytes() if emb is not None and len(emb) else None
 
     def _stored_llm_json(self, rel_path: str, sha: str) -> dict[str, Any] | None:

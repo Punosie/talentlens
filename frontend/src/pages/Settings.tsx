@@ -183,6 +183,15 @@ export default function SettingsPage() {
               </>
             )}
             {d.ai.locked && <p className="mt-3 text-[12.5px] text-muted">Set in the configuration file (.env).</p>}
+            {d.device && (
+              <p className="mt-4 text-[12.5px] text-muted" data-testid="device-info">
+                Search runs on the {d.device.active === 'cuda' ? `GPU (${d.device.benchmark?.gpu_name ?? 'NVIDIA'})` : 'CPU'}
+                {d.device.benchmark?.cpu_per_s
+                  ? ` · measured at setup: CPU ${d.device.benchmark.cpu_per_s}/s${d.device.benchmark.cuda_per_s ? `, GPU ${d.device.benchmark.cuda_per_s}/s` : ''}`
+                  : ''}
+                . Run <code>talentlens benchmark</code> to measure again.
+              </p>
+            )}
           </Section>
 
           <Section

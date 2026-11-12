@@ -75,6 +75,11 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "models": AI_MODELS,
             **st.llm.status(),
         },
+        "device": {
+            "active": st.extras.get("device", "cpu"),
+            "model": getattr(st.embedder, "model_name", None),
+            "benchmark": st.prefs.get("device_benchmark"),
+        },
         "connections": {
             "configured": bool(st.mongodb_uri()),
             "locked": st.settings.mongodb_locked,

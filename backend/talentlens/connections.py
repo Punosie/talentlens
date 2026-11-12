@@ -20,6 +20,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -55,6 +56,7 @@ PROFILE_FIELDS = {
     "migrated_at": 1,
     "sources": 1,
 }
+_PAREN_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
 _LINKEDIN_URL = re.compile(r"linkedin\.com/in/([A-Za-z0-9\-_%]{3,100})", re.I)
 
 # ------------------------------------------------------------------ pull: profile -> record
@@ -158,7 +160,9 @@ def profile_fields(doc: dict[str, Any], text: str) -> CVFields:
     for raw in [s for s in doc.get("skills") or [] if isinstance(s, str)] + rules.extract_skills(
         text, limit=40
     ):
-        c = tax.canonicalize(raw) or raw.strip()
+        # LinkedIn names skills like "Python (Programming Language)" / "React (Framework)"
+        plain = _PAREN_SUFFIX.sub("", raw).strip() or raw.strip()
+        c = tax.canonicalize(plain) or tax.canonicalize(raw) or plain
         if c and c.lower() not in seen:
             seen.add(c.lower())
             skills.append(c)
@@ -361,9 +365,16 @@ class ConnectionsSync:
 
         with self.db.connect() as conn:
             local = {
-                r["rel_path"]: (r["id"], r["sha256"], r["owners"], r["profile_url"])
+                r["rel_path"]: (
+                    r["id"],
+                    r["sha256"],
+                    r["owners"],
+                    r["profile_url"],
+                    r["embed_model"],
+                )
                 for r in conn.execute(
-                    "SELECT id, rel_path, sha256, owners, profile_url FROM cvs WHERE source=?",
+                    "SELECT id, rel_path, sha256, owners, profile_url, embed_model FROM cvs "
+                    "WHERE source=?",
                     (SOURCE,),
                 )
             }
@@ -374,18 +385,24 @@ class ConnectionsSync:
         newest: datetime | None = None
         total = col.count_documents(query)
 
-        def flush() -> None:
-            nonlocal added, updated
-            if not batch:
-                return
-            texts = [embedding_text(f, t) for _, _, t, f in batch]
+        # Embedding (native code, releases the GIL) runs in a worker thread while this thread
+        # parses the next batch; at most one batch is in flight.
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="talentlens-embed")
+        pending: Future[tuple[int, int]] | None = None
+
+        def embed_and_write(
+            items: list[tuple[str, dict[str, Any], str, CVFields]],
+        ) -> tuple[int, int]:
+            chars = getattr(self.indexer.enricher, "embed_chars", 6000)
+            texts = [embedding_text(f, t, chars) for _, _, t, f in items]
             try:
                 emb = self.indexer.enricher.embed_documents(texts)
             except Exception:
                 log.exception("Embedding LinkedIn profiles failed; storing without vectors")
                 emb = None
+            a = u = 0
             with self.db.write() as conn:
-                for i, (rel, doc, text, fields) in enumerate(batch):
+                for i, (rel, doc, text, fields) in enumerate(items):
                     blob = emb[i].astype("float32").tobytes() if emb is not None else None
                     self.indexer.upsert_external(
                         conn,
@@ -404,10 +421,27 @@ class ConnectionsSync:
                         },
                     )
                     if rel in local:
-                        updated += 1
+                        u += 1
                     else:
-                        added += 1
+                        a += 1
+            return a, u
+
+        def collect() -> None:
+            nonlocal pending, added, updated
+            if pending is not None:
+                a, u = pending.result()
+                added += a
+                updated += u
+                pending = None
+
+        def flush() -> None:
+            nonlocal pending
+            if not batch:
+                return
+            items = list(batch)
             batch.clear()
+            collect()
+            pending = pool.submit(embed_and_write, items)
 
         for done, doc in enumerate(_pages(col, query), start=1):
             rel = REL_PREFIX + str(doc["_id"])
@@ -418,7 +452,8 @@ class ConnectionsSync:
                 newest = m if newest is None or m > newest else newest
             text = profile_text(doc)
             have = local.get(rel)
-            if have and have[1] == _sha(text):
+            current_model = self.indexer.enricher.embed_model_name
+            if have and have[1] == _sha(text) and have[4] == current_model:
                 owners = json.dumps(_owners(doc))
                 if have[2] != owners or have[3] != doc.get("profile_url"):
                     with self.db.write() as conn:
@@ -435,7 +470,11 @@ class ConnectionsSync:
                     flush()
             if progress and done % 200 == 0:
                 progress(done, total, "Syncing connections")
-        flush()
+        try:
+            flush()
+            collect()
+        finally:
+            pool.shutdown(wait=True)
 
         removed = 0
         if (

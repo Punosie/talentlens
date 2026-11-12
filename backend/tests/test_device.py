@@ -40,7 +40,7 @@ def test_falls_back_to_cpu_when_gpu_load_fails(
     monkeypatch.setattr(embed, "gpu_available", lambda: True)
     FakeModel.fail_on_cuda = True
     m = embed.load_cached_first(FakeModel, "m", tmp_path)
-    assert "cuda" not in m.kw
+    assert m.kw.get("cuda") is False
     assert any(c.get("cuda") for c in FakeModel.calls)
 
 
@@ -48,4 +48,4 @@ def test_cpu_only_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setenv("TALENTLENS_DEVICE", "cpu")
     assert embed.gpu_available() is False
     m = embed.load_cached_first(FakeModel, "m", tmp_path)
-    assert "cuda" not in m.kw
+    assert m.kw.get("cuda") is False

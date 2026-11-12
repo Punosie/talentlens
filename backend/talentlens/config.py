@@ -133,6 +133,10 @@ class Settings(BaseSettings):
         return "cv_dir" in self.model_fields_set and self.cv_dir is not None
 
     @property
+    def embed_model_locked(self) -> bool:
+        return "embed_model" in self.model_fields_set
+
+    @property
     def mongodb_locked(self) -> bool:
         return "mongodb_uri" in self.model_fields_set
 

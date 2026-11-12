@@ -5,6 +5,8 @@ uv run talentlens open            start it if needed, then open the browser
 uv run talentlens set-folder PATH remember the resume folder (same as choosing it in the app)
 uv run talentlens set-model ID    choose the local AI model (e.g. qwen2.5:1.5b-instruct)
 uv run talentlens set-ai on|off   turn the local AI on or off
+uv run talentlens benchmark       measure CPU vs GPU and use the faster
+uv run talentlens set-device auto|cpu|cuda
 """
 
 from __future__ import annotations
@@ -108,6 +110,36 @@ def _set_ai(value: str) -> int:
     return 0
 
 
+def _benchmark() -> int:
+    """Measure CPU (and NVIDIA GPU, if present) on real embedding work; save the faster."""
+    from .ai.device import PROFILES, benchmark
+    from .settings_store import SettingsStore
+
+    s = get_settings()
+    s.ensure_dirs()
+    print("Measuring how fast this computer reads resumes and profiles...")
+    r = benchmark(s.model_cache_dir)
+    cpu, gpu = r.get("cpu_per_s"), r.get("cuda_per_s")
+    print(f"  CPU: {cpu or 'failed'} per second ({PROFILES['cpu'].model})")
+    if gpu or r.get("cuda_error"):
+        print(f"  GPU: {gpu or 'failed'} per second ({r.get('gpu_name') or 'NVIDIA'})")
+    else:
+        print("  GPU: none found (that's fine)")
+    SettingsStore(s.settings_path).update(device=r["choice"], device_benchmark=r)
+    print(f"Using the {'GPU' if r['choice'] == 'cuda' else 'CPU'}. Saved in TalentLens settings.")
+    return 0
+
+
+def _set_device(value: str) -> int:
+    from .settings_store import SettingsStore
+
+    s = get_settings()
+    s.ensure_dirs()
+    SettingsStore(s.settings_path).update(device=None if value == "auto" else value)
+    print(f"Device set to {value} (takes effect next time TalentLens starts)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="talentlens", description="Local resume library")
     sub = ap.add_subparsers(dest="cmd")
@@ -119,7 +151,14 @@ def main(argv: list[str] | None = None) -> None:
     m.add_argument("model")
     a = sub.add_parser("set-ai", help="turn the local AI on or off")
     a.add_argument("value", choices=["on", "off"])
+    sub.add_parser("benchmark", help="measure CPU vs GPU and save the faster")
+    d = sub.add_parser("set-device", help="run the models on the cpu, the cuda GPU, or auto")
+    d.add_argument("value", choices=["auto", "cpu", "cuda"])
     args = ap.parse_args(argv)
+    if args.cmd == "benchmark":
+        sys.exit(_benchmark())
+    if args.cmd == "set-device":
+        sys.exit(_set_device(args.value))
     if args.cmd == "set-ai":
         sys.exit(_set_ai(args.value))
     if args.cmd == "open":

@@ -105,6 +105,9 @@ if (-not $NoAI) {
     Invoke-Native 'ollama pull' { & $ollamaExe pull $Model }
     Ok "$Model ready"
 }
+Step 'Measuring CPU vs GPU speed (picks the faster for this computer)'
+Invoke-Native 'benchmark' { uv run --frozen talentlens benchmark }
+
 Step 'Downloading embedding, reranking and OCR models (about 300 MB, first time only)'
 Invoke-Native 'model warm-up' { uv run --frozen python -m talentlens.warmup }
 

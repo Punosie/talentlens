@@ -354,3 +354,28 @@ def test_settings_never_echo_the_connection_string(client: TestClient) -> None:
 @pytest.mark.parametrize("status", ["/api/connections/status"])
 def test_status_off_without_database(client: TestClient, status: str) -> None:
     assert client.get(status).json()["state"] == "off"
+
+
+def test_jd_matching_ranks_everyone_across_all_accounts(client: TestClient) -> None:
+    """By default a JD match ranks every person (all LinkedIn accounts + resumes) together."""
+    col = FakeCollection(
+        [
+            person("priya-s", owner="alice-handle"),
+            person("rahul-k", name="Rahul Kumar", owner="bob-handle", skills=["Python", "SQL"]),
+        ]
+    )
+    attach(client, col)
+    scan(client)
+    body = {
+        "requirements": {"title": "Data Engineer", "must_have_skills": ["Python", "Apache Spark"]},
+        "rerank": False,
+    }
+    items = client.post("/api/shortlist", json=body).json()["items"]
+    owners = {o for i in items for o in i.get("owners") or []}
+    sources = {i["source"] for i in items}
+    assert owners == {"alice-handle", "bob-handle"} and sources == {"file", "linkedin"}
+    scores = [i["score"] for i in items]
+    assert scores == sorted(scores, reverse=True)  # one combined ranking
+    # Priya (has Spark) ranks above Rahul (no Spark) regardless of whose connection she is
+    names = [i["name"] for i in items]
+    assert names.index("Priya Sharma") < names.index("Rahul Kumar")

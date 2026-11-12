@@ -157,6 +157,11 @@ export type AppSettings = {
     error: string | null
   }
   connections: ConnectionsStatus & { locked: boolean; host: string | null }
+  device?: {
+    active: 'cpu' | 'cuda'
+    model: string | null
+    benchmark: { cpu_per_s?: number | null; cuda_per_s?: number | null; gpu_name?: string | null; choice?: string } | null
+  }
 }
 
 export type ConnectionsStatus = {

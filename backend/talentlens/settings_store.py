@@ -19,6 +19,8 @@ DEFAULTS: dict[str, Any] = {
     "ollama_model": None,  # None = use config default
     "onboarded": False,  # first-run guide completed
     "mongodb_uri": None,  # connections database chosen in the app
+    "device": None,  # "cpu" | "cuda", chosen by the install-time benchmark
+    "device_benchmark": None,  # its measurements
 }
 
 

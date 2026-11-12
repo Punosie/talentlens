@@ -272,9 +272,7 @@ def extract_location(text: str) -> tuple[str | None, str | None]:
 
 
 def extract_skills(text: str, limit: int = 60) -> list[str]:
-    tax = taxonomy.skills()
-    counts = tax.find(text)
-    first = tax.first_positions(text)
+    counts, first = taxonomy.skills().find_with_positions(text)
     ranked = sorted(counts, key=lambda s: (-counts[s], first.get(s, 1 << 30)))
     return ranked[:limit]
 

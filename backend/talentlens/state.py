@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .ai import AIEnricher, build_embedder, build_llm, build_reranker
+from .ai.device import resolve as resolve_device
 from .ai.embed import Embedder
 from .ai.llm import LLM, NoLLM
 from .ai.rerank import Reranker
@@ -49,16 +50,18 @@ class AppState:
         settings.ensure_dirs()
         prefs = SettingsStore(settings.settings_path)
         llm = cls._make_llm(settings, prefs)
-        embedder = build_embedder(settings)
+        device = "cpu" if settings.embeddings == "mock" else resolve_device(prefs.get("device"))
+        embedder = build_embedder(settings, device)
         enricher = enricher or AIEnricher(llm, embedder)
         state = cls(
             settings=settings,
             prefs=prefs,
             llm=llm,
             embedder=embedder,
-            reranker=build_reranker(settings),
+            reranker=build_reranker(settings, device),
             enricher=enricher,
         )
+        state.extras["device"] = device
         folder, source = state._resolve_folder()
         if folder is not None:
             state.library = state._open(folder)
