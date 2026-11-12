@@ -23,6 +23,7 @@ export function CandidateProfile({
   const hl = new Set(highlight.map((s) => s.toLowerCase()))
   const cv = q.data
   const name = cv ? displayName(cv) : ''
+  const isLinkedIn = cv?.source === 'linkedin'
 
   return (
     <Dialog.Root open={cvId !== null} onOpenChange={(o) => !o && onClose()}>
@@ -38,8 +39,18 @@ export function CandidateProfile({
             <div className="min-w-0 flex-1">
               <Dialog.Title className="truncate text-xl font-bold tracking-tight">{cv ? name : 'Loading…'}</Dialog.Title>
               <p className="mt-0.5 truncate text-sm text-muted">{cv?.title || (cv ? 'Job title not found' : '')}</p>
-              {cv && (
-                <div className="mt-3 flex flex-wrap gap-2">
+              {cv && isLinkedIn && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {cv.profile_url && (
+                    <Button size="sm" variant="primary" onClick={() => window.open(cv.profile_url!, '_blank', 'noopener')}>
+                      <ExternalLink className="size-4" /> Open on LinkedIn
+                    </Button>
+                  )}
+                  <SourceBadges cv={cv} />
+                </div>
+              )}
+              {cv && !isLinkedIn && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="primary" onClick={() => window.open(api.fileUrl(cv.id), '_blank')}>
                     <ExternalLink className="size-4" /> Open original
                   </Button>
@@ -48,6 +59,7 @@ export function CandidateProfile({
                       <Download className="size-4" /> Download
                     </Button>
                   </a>
+                  {cv.person_id && !cv.person_id.startsWith('cv:') && <Chip tone="ink">Linked to a LinkedIn connection</Chip>}
                 </div>
               )}
             </div>
@@ -73,8 +85,8 @@ export function CandidateProfile({
               <Tabs.List className="flex gap-1 border-b border-line px-6" aria-label="Candidate details">
                 {[
                   ['overview', 'Overview'],
-                  ['resume', 'Resume'],
-                  ['source', 'File & source'],
+                  ['resume', isLinkedIn ? 'Profile' : 'Resume'],
+                  ['source', isLinkedIn ? 'Source' : 'File & source'],
                 ].map(([v, l]) => (
                   <Tabs.Trigger
                     key={v}
@@ -156,7 +168,12 @@ export function CandidateProfile({
               </Tabs.Content>
 
               <Tabs.Content value="resume" className="min-h-0 flex-1 outline-none">
-                {cv.ext === 'pdf' ? (
+                {isLinkedIn ? (
+                  <div className="h-full overflow-y-auto px-6 py-5">
+                    <p className="mb-3 text-[12px] text-muted">LinkedIn profile from your connections database.</p>
+                    <pre className="font-sans text-[13.5px] leading-relaxed whitespace-pre-wrap">{cv.text}</pre>
+                  </div>
+                ) : cv.ext === 'pdf' ? (
                   <iframe
                     title={`Resume of ${name}`}
                     src={`${api.fileUrl(cv.id)}#view=FitH`}
@@ -173,6 +190,21 @@ export function CandidateProfile({
               </Tabs.Content>
 
               <Tabs.Content value="source" className="min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-none">
+                {isLinkedIn ? (
+                  <dl className="space-y-3 text-sm">
+                    <Row label="Source">LinkedIn (connections database)</Row>
+                    <Row label="Connected via">
+                      {cv.owners?.length ? cv.owners.map((o) => `@${o}`).join(', ') : 'Unknown'}
+                    </Row>
+                    {cv.profile_url && (
+                      <Row label="Profile">
+                        <a className="underline underline-offset-2" href={cv.profile_url} target="_blank" rel="noopener noreferrer">
+                          {cv.profile_url.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      </Row>
+                    )}
+                  </dl>
+                ) : (
                 <dl className="space-y-3 text-sm">
                   <Row label="File">{cv.filename}</Row>
                   <Row label="Type">
@@ -187,6 +219,7 @@ export function CandidateProfile({
                     </Row>
                   ))}
                 </dl>
+                )}
                 <details className="mt-6 text-sm">
                   <summary className="cursor-pointer font-medium text-ink">Show the text TalentLens read</summary>
                   <pre className="mt-3 max-h-[420px] overflow-auto rounded-md bg-sunken p-4 font-sans text-[13px] leading-relaxed whitespace-pre-wrap">
@@ -229,5 +262,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="mb-2.5 text-[13px] font-semibold">{title}</h3>
       {children}
     </section>
+  )
+}
+
+/** "LinkedIn · via @handle" badges for a synced connection. */
+export function SourceBadges({ cv }: { cv: { source?: string; owners?: string[] } }) {
+  if (cv.source !== 'linkedin') return null
+  const owners = cv.owners ?? []
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Chip tone="ink">LinkedIn</Chip>
+      {owners.length > 0 && (
+        <span className="text-[12px] text-muted" title={owners.map((o) => `@${o}`).join(', ')}>
+          via {owners.length === 1 ? `@${owners[0]}` : `${owners.length} accounts`}
+        </span>
+      )}
+    </span>
   )
 }

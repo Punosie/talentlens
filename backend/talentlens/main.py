@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api import connections as connections_api
 from .api import cvs as cvs_api
 from .api import index as index_api
 from .api import jd as jd_api
@@ -99,6 +100,7 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
     app.include_router(search_api.router)
     app.include_router(jd_api.router)
     app.include_router(system_api.router)
+    app.include_router(connections_api.router)
 
     _mount_frontend(app, FRONTEND_DIST)
     return app

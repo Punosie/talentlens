@@ -31,6 +31,13 @@ def _norm_key(s: str) -> str:
     return re.sub(r"[\s\-]+", " ", s.strip().lower())
 
 
+_SPACES = re.compile(r"[\s\-]+")
+
+
+def _space_key(s: str) -> str:
+    return _SPACES.sub(" ", s)
+
+
 @dataclass(frozen=True)
 class Taxonomy:
     canonical: tuple[str, ...]
@@ -54,6 +61,25 @@ class Taxonomy:
                     counts[c] += 1
         return counts
 
+    def find_with_positions(self, text: str) -> tuple[Counter[str], dict[str, int]]:
+        """Counts and first position of each canonical skill in ONE pass over the text
+        (find() + first_positions() scanned it twice with the large alternation regexes)."""
+        counts: Counter[str] = Counter()
+        pos: dict[str, int] = {}
+        for rx, table, key in (
+            (self.rx_ci, self.alias_ci, _norm_key),
+            (self.rx_cs, self.alias_cs, _space_key),
+        ):
+            if rx is None:
+                continue
+            for m in rx.finditer(text):
+                c = table.get(key(m.group(0)))
+                if c:
+                    counts[c] += 1
+                    if c not in pos or m.start() < pos[c]:
+                        pos[c] = m.start()
+        return counts, pos
+
     def first_positions(self, text: str) -> dict[str, int]:
         pos: dict[str, int] = {}
         for rx, table, key in (
@@ -69,7 +95,16 @@ class Taxonomy:
         return pos
 
     def canonicalize(self, term: str) -> str | None:
-        """Map a free-text term (e.g. from the LLM) onto a canonical name, if known."""
+        """Map a free-text term (e.g. from the LLM) onto a canonical name, if known. Cached."""
+        cache = self.__dict__.setdefault("_canon_cache", {})
+        if term in cache:
+            return cache[term]
+        out = self._canonicalize(term)
+        if len(cache) < 50_000:
+            cache[term] = out
+        return out
+
+    def _canonicalize(self, term: str) -> str | None:
         t = term.strip()
         if not t:
             return None

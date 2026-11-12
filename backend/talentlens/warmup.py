@@ -16,11 +16,16 @@ def main() -> int:
     s = get_settings()
     s.ensure_dirs()
     print(f"Model cache: {s.model_cache_dir}")
+    from .ai.device import resolve
+    from .settings_store import SettingsStore
+
+    device = resolve(SettingsStore(s.settings_path).get("device"))
     t = time.perf_counter()
-    build_embedder(s).embed_documents(["warm up"])
-    print(f"  embeddings ready: {s.embed_model} ({time.perf_counter() - t:.0f}s)")
+    emb = build_embedder(s, device)
+    emb.embed_documents(["warm up"])
+    print(f"  embeddings ready: {emb.model_name} on {device} ({time.perf_counter() - t:.0f}s)")
     t = time.perf_counter()
-    build_reranker(s).scores("warm up", ["warm up"])
+    build_reranker(s, device).scores("warm up", ["warm up"])
     print(f"  reranker ready:   {s.rerank_model} ({time.perf_counter() - t:.0f}s)")
     from .parsing.ocr import _get_engine
 

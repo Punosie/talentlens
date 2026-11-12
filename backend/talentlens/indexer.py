@@ -50,8 +50,10 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def embedding_text(f: CVFields, text: str) -> str:
-    """What we embed: the structured highlights first, then the start of the resume."""
+def embedding_text(f: CVFields, text: str, chars: int = 6000) -> str:
+    """What we embed: the structured highlights first, then the start of the resume.
+    chars < 6000 (CPU): the whole text is capped there; the model only reads ~512 tokens
+    anyway, and a shorter focused input embeds several times faster."""
     head = " | ".join(
         x
         for x in (
@@ -64,6 +66,8 @@ def embedding_text(f: CVFields, text: str) -> str:
         )
         if x
     )
+    if chars < 6000:
+        return (f"{head}\n\n{text}" if head else text)[:chars]
     return f"{head}\n\n{text[:6000]}" if head else text[:6000]
 
 
@@ -95,7 +99,8 @@ class Indexer:
             rows = {
                 r["rel_path"]: r
                 for r in conn.execute(
-                    "SELECT id, rel_path, size, mtime, sha256, status, embed_model FROM cvs"
+                    "SELECT id, rel_path, size, mtime, sha256, status, embed_model FROM cvs "
+                    "WHERE source='file'"
                 )
             }
 
@@ -203,7 +208,8 @@ class Indexer:
         return "indexed"
 
     def _embed(self, fields: CVFields, text: str) -> bytes | None:
-        emb = self.enricher.embed_documents([embedding_text(fields, text)])
+        chars = getattr(self.enricher, "embed_chars", 6000)
+        emb = self.enricher.embed_documents([embedding_text(fields, text, chars)])
         return emb[0].astype(np.float32).tobytes() if emb is not None and len(emb) else None
 
     def _stored_llm_json(self, rel_path: str, sha: str) -> dict[str, Any] | None:
@@ -223,8 +229,8 @@ class Indexer:
     # ------------------------------------------------------------------
     # CVs that still need the LLM: not done for this content, not already confident by rules
     _PENDING = (
-        "status='indexed' AND confident=0 AND (llm_sha IS NULL OR llm_sha != sha256) "
-        "AND llm_attempts < 2"
+        "status='indexed' AND source='file' AND confident=0 "
+        "AND (llm_sha IS NULL OR llm_sha != sha256) AND llm_attempts < 2"
     )
 
     def backfill_confidence(self) -> int:
@@ -237,7 +243,7 @@ class Indexer:
         with self.db.connect() as conn:
             rows = conn.execute(
                 "SELECT id, text, filename, name, title, city FROM cvs WHERE status='indexed' "
-                "AND (llm_sha IS NULL OR llm_sha != sha256)"
+                "AND source='file' AND (llm_sha IS NULL OR llm_sha != sha256)"
             ).fetchall()
         ids = [
             r["id"]
@@ -470,3 +476,76 @@ class Indexer:
             if row["llm_sha"] != sha:  # new content: give the LLM fresh attempts
                 conn.execute("UPDATE cvs SET llm_attempts=0 WHERE id=?", (row["id"],))
             self._write_facets(conn, row["id"], fields, parsed.text, f.path.name)
+
+    # ---- records that do not come from a file (e.g. LinkedIn profiles synced from MongoDB) ----
+
+    def upsert_external(
+        self,
+        conn: Any,
+        *,
+        rel_path: str,
+        filename: str,
+        source: str,
+        sha: str,
+        text: str,
+        fields: CVFields,
+        blob: bytes | None,
+        mtime: float,
+        extra: dict[str, Any],
+    ) -> int:
+        """Insert/update a non-file record inside an open write transaction; returns its id.
+
+        These rows never touch the CV folder: the folder scan and the background AI pass
+        only look at source='file' rows."""
+        values = {
+            "rel_path": rel_path,
+            "filename": filename,
+            "ext": source,
+            "sha256": sha,
+            "size": len(text),
+            "mtime": mtime,
+            "status": "indexed",
+            "error": None,
+            "text": text,
+            "text_chars": len(text),
+            "pages": None,
+            "ocr_used": 0,
+            "parser": source,
+            "extractor": fields.extractor,
+            "name": fields.name,
+            "email": fields.email,
+            "phone": fields.phone,
+            "location": fields.location,
+            "city": fields.city,
+            "country": fields.country,
+            "years_exp": fields.years_exp,
+            "title": fields.title,
+            "skills": json.dumps(fields.skills),
+            "domains": json.dumps(fields.domains),
+            "education": json.dumps(fields.education),
+            "summary": fields.summary,
+            "embedding": blob,
+            "embed_model": self.enricher.embed_model_name if blob else None,
+            "indexed_at": _now(),
+            "confident": 1,
+            "source": source,
+            **extra,
+        }
+        cols = ", ".join(values)
+        marks = ", ".join("?" for _ in values)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in values if c != "rel_path")
+        conn.execute(
+            f"INSERT INTO cvs({cols}) VALUES ({marks}) "
+            f"ON CONFLICT(rel_path) DO UPDATE SET {updates}",
+            tuple(values.values()),
+        )
+        cv_id = conn.execute("SELECT id FROM cvs WHERE rel_path=?", (rel_path,)).fetchone()["id"]
+        self._write_facets(conn, cv_id, fields, text, filename)
+        return cv_id
+
+    def delete_ids(self, conn: Any, ids: list[int]) -> None:
+        conn.executemany("DELETE FROM cv_fts WHERE rowid=?", [(i,) for i in ids])
+        conn.executemany("DELETE FROM cvs WHERE id=?", [(i,) for i in ids])
+
+    def notify_changed(self) -> None:
+        self._notify()

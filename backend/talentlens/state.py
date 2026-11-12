@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .ai import AIEnricher, build_embedder, build_llm, build_reranker
+from .ai.device import resolve as resolve_device
 from .ai.embed import Embedder
 from .ai.llm import LLM, NoLLM
 from .ai.rerank import Reranker
@@ -49,16 +50,18 @@ class AppState:
         settings.ensure_dirs()
         prefs = SettingsStore(settings.settings_path)
         llm = cls._make_llm(settings, prefs)
-        embedder = build_embedder(settings)
+        device = "cpu" if settings.embeddings == "mock" else resolve_device(prefs.get("device"))
+        embedder = build_embedder(settings, device)
         enricher = enricher or AIEnricher(llm, embedder)
         state = cls(
             settings=settings,
             prefs=prefs,
             llm=llm,
             embedder=embedder,
-            reranker=build_reranker(settings),
+            reranker=build_reranker(settings, device),
             enricher=enricher,
         )
+        state.extras["device"] = device
         folder, source = state._resolve_folder()
         if folder is not None:
             state.library = state._open(folder)
@@ -94,6 +97,7 @@ class AppState:
             self.enricher,
             self.embedder,
             ai_paused=bool(self.prefs.get("ai_paused")),
+            mongodb_uri=self.mongodb_uri(),
         )
 
     # --- lifecycle --------------------------------------------------------
@@ -106,6 +110,31 @@ class AppState:
         self._started = False
         if self.library:
             self.library.stop()
+
+    def mongodb_uri(self) -> str | None:
+        return self.settings.mongodb_uri or self.prefs.get("mongodb_uri") or None
+
+    def set_mongodb_uri(self, uri: str | None) -> None:
+        """Save (or clear) the connections database and reopen the current library with it."""
+        if self.settings.mongodb_locked:
+            raise FolderProblem(
+                "The connections database is set in the configuration file (.env) "
+                "and can't be changed here."
+            )
+        uri = (uri or "").strip() or None
+        if uri and not uri.startswith(("mongodb://", "mongodb+srv://")):
+            raise FolderProblem("That doesn't look like a MongoDB connection string.")
+        self.prefs.update(mongodb_uri=uri)
+        with self._switch_lock:
+            old = self.library
+            if not old:
+                return
+            new = self._open(old.folder)
+            old.stop()
+            self.library = new
+            if self._started:
+                new.start(watch=self.settings.watch, scan=True)
+            self.extras.pop("shortlister", None)
 
     def switch_folder(self, path: Path) -> Library:
         """Point the app at another resume folder (validated). Its library opens immediately."""

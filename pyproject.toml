@@ -10,7 +10,10 @@ dependencies = [
     "fastembed>=0.9.1",
     "httpx>=0.28.1",
     "numpy>=2.5.4",
+    # Windows: CUDA build of ONNX Runtime (NVIDIA GPU embeddings/reranking; falls back to CPU)
+    "onnxruntime-gpu[cuda,cudnn]>=1.22 ; sys_platform == 'win32'",
     "pydantic-settings>=2.16.2",
+    "pymongo[srv]>=4.19",
     "pymupdf>=2.1",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.33",
@@ -26,6 +29,10 @@ talentlens = "talentlens.__main__:main"
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# the CPU-only onnxruntime (pulled in by fastembed/rapidocr) is replaced by onnxruntime-gpu on Windows
+override-dependencies = ["onnxruntime>=1.20 ; sys_platform != 'win32'"]
 
 [tool.uv.build-backend]
 module-root = "backend"

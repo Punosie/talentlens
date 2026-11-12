@@ -7,7 +7,8 @@ from .db import loads_list
 
 SUMMARY_COLUMNS = (
     "id, rel_path, filename, ext, status, error, name, email, phone, location, city, country, "
-    "years_exp, title, skills, domains, summary, ocr_used, pages, extractor, added_at, indexed_at"
+    "years_exp, title, skills, domains, summary, ocr_used, pages, extractor, added_at, indexed_at, "
+    "source, owners, profile_url, person_id"
 )
 
 
@@ -37,4 +38,9 @@ def cv_summary(row: sqlite3.Row) -> dict[str, Any]:
     if "city" in keys:
         out["city"] = row["city"]
         out["country"] = row["country"]
+    if "source" in keys:
+        out["source"] = row["source"]
+        out["owners"] = loads_list(row["owners"])
+        out["profile_url"] = row["profile_url"]
+        out["person_id"] = row["person_id"]
     return out

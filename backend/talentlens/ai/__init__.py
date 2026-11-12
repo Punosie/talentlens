@@ -20,6 +20,7 @@ class AIEnricher:
         self.llm = llm
         self.embedder = embedder
         self.embed_model_name = embedder.model_name
+        self.embed_chars = getattr(embedder, "text_chars", 6000)
 
     def extract(self, text: str, filename: str, llm_json: dict[str, Any] | None = None) -> CVFields:
         return _extract.merge(rules.extract(text, filename), llm_json)
@@ -42,16 +43,21 @@ def build_llm(settings: Settings) -> LLM:
     return OllamaLLM(settings.ollama_url, settings.ollama_model, settings.ollama_timeout_s)
 
 
-def build_embedder(settings: Settings) -> Embedder:
+def build_embedder(settings: Settings, device: str = "auto") -> Embedder:
     if settings.embeddings == "mock":
         return MockEmbedder()
-    return FastEmbedder(settings.embed_model, settings.model_cache_dir)
+    from .device import PROFILES, resolve
+
+    dev = device if device in ("cpu", "cuda") else resolve(None)
+    prof = PROFILES[dev]  # type: ignore[index]
+    model = settings.embed_model if settings.embed_model_locked else prof.model
+    return FastEmbedder(model, settings.model_cache_dir, device=dev, text_chars=prof.text_chars)
 
 
-def build_reranker(settings: Settings) -> Reranker:
+def build_reranker(settings: Settings, device: str = "auto") -> Reranker:
     if settings.embeddings == "mock":
         return MockReranker()
-    return FastReranker(settings.rerank_model, settings.model_cache_dir)
+    return FastReranker(settings.rerank_model, settings.model_cache_dir, device=device)
 
 
 __all__ = ["AIEnricher", "build_embedder", "build_llm", "build_reranker"]

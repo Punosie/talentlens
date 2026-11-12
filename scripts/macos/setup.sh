@@ -106,6 +106,9 @@ if [[ $NO_AI -eq 0 ]]; then
   ollama pull "$MODEL"
   ok "$MODEL ready"
 fi
+step "Measuring this computer's speed (picks the faster settings)"
+uv run --frozen talentlens benchmark
+
 step "Downloading search and OCR models (about 300 MB, first time only)"
 uv run --frozen python -m talentlens.warmup
 

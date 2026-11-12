@@ -19,9 +19,10 @@ class Reranker(Protocol):
 
 
 class FastReranker:
-    def __init__(self, model_name: str, cache_dir: Path) -> None:
+    def __init__(self, model_name: str, cache_dir: Path, *, device: str = "auto") -> None:
         self.model_name = model_name
         self.cache_dir = cache_dir
+        self.device = device
         self._model = None
         self._lock = threading.Lock()
 
@@ -34,7 +35,7 @@ class FastReranker:
                     from .embed import load_cached_first
 
                     self._model = load_cached_first(
-                        TextCrossEncoder, self.model_name, self.cache_dir
+                        TextCrossEncoder, self.model_name, self.cache_dir, self.device
                     )
         return self._model
 

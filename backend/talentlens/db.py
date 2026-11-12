@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS shortlists (
 MIGRATIONS: list[tuple[str, str]] = [
     ("confident", "INTEGER NOT NULL DEFAULT 0"),  # rules already read this CV well
     ("ai_priority", "REAL NOT NULL DEFAULT 0"),  # higher = AI reads it sooner
+    # Connections (MongoDB) integration
+    ("source", "TEXT NOT NULL DEFAULT 'file'"),  # file = resume on disk | linkedin = synced profile
+    ("person_id", "TEXT"),  # MongoDB person _id this record belongs to (LinkedIn id or cv:...)
+    ("owners", "TEXT NOT NULL DEFAULT '[]'"),  # JSON: LinkedIn accounts this person is connected to
+    ("profile_url", "TEXT"),  # LinkedIn profile URL
+    ("mongo_pushed", "TEXT"),  # "<sha256>:<llm_sha>" last pushed to MongoDB (file rows)
 ]
 
 
@@ -118,6 +124,8 @@ class Database:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_cvs_ai_queue ON cvs(status, ai_priority, added_at)"
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_cvs_source ON cvs(source)")
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_cvs_person ON cvs(person_id)")
             conn.execute(
                 "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",

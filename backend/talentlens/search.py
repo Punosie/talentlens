@@ -28,6 +28,8 @@ class Filters:
     domains: list[str] = field(default_factory=list)
     exts: list[str] = field(default_factory=list)
     include_unreadable: bool = False
+    sources: list[str] = field(default_factory=list)  # file | linkedin
+    owners: list[str] = field(default_factory=list)  # LinkedIn accounts (connected via)
 
     def sql(self) -> tuple[str, list[Any]]:
         where: list[str] = []
@@ -73,6 +75,17 @@ class Filters:
             marks = ",".join("?" * len(self.exts))
             where.append(f"c.ext IN ({marks})")
             args.extend("." + e.lower().lstrip(".") for e in self.exts)
+        if self.sources:
+            marks = ",".join("?" * len(self.sources))
+            where.append(f"c.source IN ({marks})")
+            args.extend(self.sources)
+        if self.owners:
+            marks = ",".join("?" * len(self.owners))
+            where.append(
+                f"EXISTS (SELECT 1 FROM json_each(c.owners) o "
+                f"WHERE o.value COLLATE NOCASE IN ({marks}))"
+            )
+            args.extend(self.owners)
         return (" AND ".join(where) or "1=1"), args
 
 
@@ -301,7 +314,16 @@ class SearchEngine:
                 "ELSE '15+' END AS b, COUNT(*) FROM cvs WHERE status='indexed' "
                 "AND years_exp IS NOT NULL GROUP BY b"
             ).fetchall()
+            sources = conn.execute(
+                "SELECT source AS v, COUNT(*) AS n FROM cvs WHERE status='indexed' GROUP BY source"
+            ).fetchall()
+            owners = conn.execute(
+                "SELECT o.value AS v, COUNT(*) AS n FROM cvs c, json_each(c.owners) o "
+                "WHERE c.status='indexed' GROUP BY o.value ORDER BY n DESC LIMIT 50"
+            ).fetchall()
         return {
+            "sources": [{"value": r["v"], "count": r["n"]} for r in sources],
+            "owners": [{"value": r["v"], "count": r["n"]} for r in owners],
             "skills": [{"value": r["v"], "count": r["n"]} for r in skills],
             "domains": [{"value": r["v"], "count": r["n"]} for r in domains],
             "countries": [{"value": r["v"], "count": r["n"]} for r in countries],

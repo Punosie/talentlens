@@ -42,6 +42,8 @@ class SettingsUpdate(BaseModel):
     ai_enabled: bool | None = None
     ollama_model: str | None = Field(default=None, max_length=100)
     onboarded: bool | None = None
+    # "" clears it. Never echoed back: settings only report whether one is configured.
+    mongodb_uri: str | None = Field(default=None, max_length=2000)
 
 
 class FolderCheck(BaseModel):
@@ -73,7 +75,26 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "models": AI_MODELS,
             **st.llm.status(),
         },
+        "device": {
+            "active": st.extras.get("device", "cpu"),
+            "model": getattr(st.embedder, "model_name", None),
+            "benchmark": st.prefs.get("device_benchmark"),
+        },
+        "connections": {
+            "configured": bool(st.mongodb_uri()),
+            "locked": st.settings.mongodb_locked,
+            "host": _mongo_host(st.mongodb_uri()),
+            **(lib.connections.snapshot() if lib and lib.connections else {}),
+        },
     }
+
+
+def _mongo_host(uri: str | None) -> str | None:
+    """Cluster host only (no user, password or options) so the UI can show what's connected."""
+    if not uri:
+        return None
+    rest = uri.split("://", 1)[-1]
+    return rest.split("@", 1)[-1].split("/", 1)[0].split("?", 1)[0] or None
 
 
 @router.get("/settings")
@@ -94,6 +115,11 @@ async def update_settings(st: State, body: SettingsUpdate) -> dict[str, Any]:
         st.set_ai(enabled=body.ai_enabled, model=body.ollama_model)
     if body.onboarded is not None:
         st.prefs.update(onboarded=body.onboarded)
+    if body.mongodb_uri is not None:
+        try:
+            await run_in_threadpool(st.set_mongodb_uri, body.mongodb_uri)
+        except FolderProblem as e:
+            raise HTTPException(400, str(e)) from e
     return settings_payload(st)
 
 

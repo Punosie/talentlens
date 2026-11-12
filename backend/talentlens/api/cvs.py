@@ -61,9 +61,13 @@ def get_cv(cv_id: int, st: State) -> dict[str, Any]:
 @router.get("/{cv_id:int}/file")
 def get_cv_file(cv_id: int, st: State, download: bool = False) -> FileResponse:
     with st.db.connect() as conn:
-        row = conn.execute("SELECT rel_path, filename FROM cvs WHERE id=?", (cv_id,)).fetchone()
+        row = conn.execute(
+            "SELECT rel_path, filename, source FROM cvs WHERE id=?", (cv_id,)
+        ).fetchone()
     if row is None:
         raise HTTPException(404, "Resume not found")
+    if row["source"] != "file":
+        raise HTTPException(404, "This person comes from LinkedIn and has no resume file")
     try:
         path = st.store.resolve_rel(row["rel_path"])
     except UploadRejected as e:

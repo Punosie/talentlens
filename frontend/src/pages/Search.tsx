@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Briefcase, FileUp, Inbox, MapPin, Search as SearchIcon, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { CandidateProfile } from '../components/CandidateProfile'
+import { CandidateProfile, SourceBadges } from '../components/CandidateProfile'
 import { FacetPicker } from '../components/FacetPicker'
 import { Avatar, Button, Chip, Empty, HelpDot, Input, Kbd, Label, Skeleton } from '../components/ui'
 import { api, type CVSummary, type SearchParams } from '../lib/api'
@@ -65,6 +65,8 @@ export default function SearchPage() {
       years_max: sp.get('ymax') ? Number(sp.get('ymax')) : null,
       location: sp.getAll('loc'),
       domain: sp.getAll('dom'),
+      source: sp.getAll('src') as ('file' | 'linkedin')[],
+      owner: sp.getAll('via'),
       sort: (sp.get('sort') as SearchParams['sort']) || (q ? 'relevance' : 'recent'),
     }),
     [q, sp],
@@ -100,6 +102,7 @@ export default function SearchPage() {
     })
 
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets })
+  const hasLinkedIn = (facets.data?.sources ?? []).some((s) => s.value === 'linkedin' && s.count > 0)
   const results = useInfiniteQuery({
     queryKey: ['search', params],
     queryFn: ({ pageParam }) => api.search({ ...params, limit: PAGE, offset: pageParam }),
@@ -113,7 +116,8 @@ export default function SearchPage() {
   const total = results.data?.pages[0]?.total ?? 0
 
   const yearsActive = params.years_min !== null || params.years_max !== null
-  const activeCount = params.skills!.length + params.location!.length + params.domain!.length + (yearsActive ? 1 : 0)
+  const activeCount =
+    params.skills!.length + params.location!.length + params.domain!.length + params.source!.length + params.owner!.length + (yearsActive ? 1 : 0)
   const yearLabel =
     params.years_min !== null && params.years_max !== null
       ? `${params.years_min}–${params.years_max} yrs`
@@ -200,6 +204,49 @@ export default function SearchPage() {
           <Input type="number" min={0} max={60} inputMode="numeric" placeholder="Max" aria-label="Maximum years" data-testid="filter-years-max" value={sp.get('ymax') ?? ''} onChange={(e) => setOne('ymax', e.target.value)} className="h-9" />
         </div>
       </div>
+
+      {hasLinkedIn && (
+        <div>
+          <Label>Show</Label>
+          <div className="flex rounded-md border border-line p-0.5 text-[13px]" role="group" aria-label="Show">
+            {(
+              [
+                ['', 'Everyone'],
+                ['file', 'Resumes'],
+                ['linkedin', 'LinkedIn'],
+              ] as const
+            ).map(([v, label]) => {
+              const on = (params.source![0] ?? '') === v
+              return (
+                <button
+                  key={v || 'all'}
+                  type="button"
+                  aria-pressed={on}
+                  data-testid={`filter-source-${v || 'all'}`}
+                  onClick={() => setList('src', v ? [v] : [])}
+                  className={cn('flex-1 rounded px-2 py-1', on ? 'bg-ink text-on-ink' : 'text-muted hover:text-text')}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {(facets.data?.owners?.length ?? 0) > 0 && (
+        <div>
+          <Label>Connected via</Label>
+          <FacetPicker
+            label="Connected via"
+            testId="filter-owner"
+            options={facets.data?.owners ?? []}
+            selected={params.owner!}
+            onChange={(v) => setList('via', v)}
+            placeholder="LinkedIn account…"
+          />
+        </div>
+      )}
 
       <div>
         <Label>Location</Label>
@@ -408,13 +455,14 @@ function ResultCard({ cv, selectedSkills, onOpen }: { cv: CVSummary; selectedSki
               {name}
             </span>
             {cv.status !== 'indexed' && <Chip tone="missing">couldn't read</Chip>}
+            <SourceBadges cv={cv} />
             {cv.extractor === 'llm' && (
               <span className="inline-flex items-center gap-0.5 text-[11.5px] text-muted" title="Details checked by smart reading">
                 <Sparkles className="size-3" />
               </span>
             )}
           </div>
-          <p className="truncate text-[14px] text-muted">{cv.title || cv.filename}</p>
+          <p className="truncate text-[14px] text-muted">{cv.title || (cv.source === 'linkedin' ? 'Title not listed' : cv.filename)}</p>
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[13px]">
             <span className="inline-flex items-center gap-1">
               <Briefcase className="size-3.5 text-muted" />
