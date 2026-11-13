@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Download, FileText, ListChecks, Pencil, Save, Sparkles, Upload, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Download, FilePlus2, FileText, ListChecks, Pencil, Save, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { CandidateProfile, SourceBadges } from '../components/CandidateProfile'
 import { FacetPicker } from '../components/FacetPicker'
 import { SEGMENTS, ScoreBar } from '../components/ScoreBar'
-import { Avatar, Button, Card, Chip, Empty, HelpDot, Input, Label, Modal, Skeleton, Spinner, Textarea, useToast } from '../components/ui'
+import { Avatar, Button, Card, Chip, ConfirmDialog, Empty, HelpDot, Input, Label, Modal, Skeleton, Spinner, Textarea, useToast } from '../components/ui'
 import { api, type RankedCV, type Requirements, type ShortlistResult } from '../lib/api'
 import { cn, displayName, downloadBlob, matchLabel, matchReason } from '../lib/utils'
 
@@ -99,25 +99,20 @@ export default function MatchPage() {
   const [via, setVia] = useState<string[]>([])
   const scope = { sources: pool ? [pool] : [], owners: pool === 'file' ? [] : via }
 
-  // --- ranking: instant first, refined second -------------------------------------
-  const [refining, setRefining] = useState(false)
+  // --- ranking: one request, shown once in its final order -----------------------
   const rank = useMutation({
-    mutationFn: async ({ r, jd }: { r: Requirements; jd: string }) => {
-      const quick = await api.shortlist(r, jd, 100, false, scope)
-      setResult(quick)
-      setRefining(true)
-      try {
-        return await api.shortlist(r, jd, 100, true, scope)
-      } finally {
-        setRefining(false)
-      }
-    },
-    onSuccess: (r) => {
-      setResult(r)
+    mutationFn: ({ r, jd }: { r: Requirements; jd: string }) => api.shortlist(r, jd, 100, true, scope),
+    onMutate: () => {
+      setResult(null)
       setExplanations({})
+      setSelected(new Set())
     },
+    onSuccess: (r) => setResult(r),
     onError: (e: Error) => toast(e.message, 'error'),
   })
+  // smart reading finished after the candidates were shown: offer it, never reshuffle on its own
+  const [resultOffer, setResultOffer] = useState<Requirements | null>(null)
+  const [confirmNew, setConfirmNew] = useState(false)
 
   const aiParse = useMutation({
     mutationFn: (input: { text?: string; file?: File }) => api.parseJd({ ...input, mode: 'ai' }),
@@ -127,9 +122,12 @@ export default function MatchPage() {
         setAiOffer(r.requirements)
         return
       }
+      if (stepRef.current === 2) {
+        setResultOffer(r.requirements)
+        return
+      }
       setReq(r.requirements)
       toast('Smart reading improved the requirements')
-      if (stepRef.current === 2) rank.mutate({ r: r.requirements, jd: r.jd_text })
     },
   })
 
@@ -140,6 +138,7 @@ export default function MatchPage() {
       setReq(r.requirements)
       dirtyRef.current = false
       setAiOffer(null)
+      setResultOffer(null)
       setResult(null)
       setSelected(new Set())
       setStep(1)
@@ -161,6 +160,7 @@ export default function MatchPage() {
 
   const showCandidates = () => {
     if (!req) return
+    setResultOffer(null)
     setStep(2)
     rank.mutate({ r: req, jd: jdText })
   }
@@ -207,8 +207,13 @@ export default function MatchPage() {
     setJdInput('')
     setJdFile(null)
     setSelected(new Set())
+    setAiOffer(null)
+    setResultOffer(null)
+    setConfirmNew(false)
     setStep(0)
   }
+  // only ask when there is something to lose
+  const newJob = () => (result?.items.length ? setConfirmNew(true) : reset())
 
   const skillOptions = facets.data?.skills ?? []
   const locationOptions = [
@@ -224,8 +229,8 @@ export default function MatchPage() {
           <p className="mt-1 text-[15px] text-muted">Find the best people in your library for a job description.</p>
         </div>
         {step > 0 && (
-          <Button variant="ghost" onClick={reset} data-testid="new-jd">
-            <X className="size-4" /> Start over
+          <Button onClick={newJob} data-testid="new-jd">
+            <FilePlus2 className="size-4" /> New job
           </Button>
         )}
       </div>
@@ -377,10 +382,16 @@ export default function MatchPage() {
           </Card>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[14px] font-medium" data-testid="shortlist-count" aria-live="polite">
-              {!result ? 'Finding candidates…' : `${result.total} candidates ranked`}
-              {refining && <span className="ml-2 inline-flex items-center gap-1.5 text-[13px] font-normal text-muted"><Spinner className="size-3.5" /> fine-tuning the order…</span>}
-              {result?.refined && !refining && <span className="ml-2 inline-flex items-center gap-1 text-[13px] font-normal text-muted"><Check className="size-3.5" /> order fine-tuned</span>}
+            <p className="inline-flex items-center gap-2 text-[14px] font-medium" data-testid="shortlist-count" aria-live="polite">
+              {result ? (
+                `${result.total} candidates ranked`
+              ) : rank.isPending ? (
+                <>
+                  <Spinner className="size-3.5" /> Ranking candidates… this takes a few seconds
+                </>
+              ) : (
+                'No ranking yet'
+              )}
             </p>
             {result && result.items.length > 0 && (
               <div className="flex gap-2">
@@ -394,7 +405,28 @@ export default function MatchPage() {
             )}
           </div>
 
-          {!result && (
+          {resultOffer && (
+            <div className="tl-enter mt-4 flex flex-wrap items-center gap-3 rounded-md border-l-2 border-mark bg-mark-soft px-4 py-3 text-sm" data-testid="result-offer">
+              <Sparkles className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1">Smart reading finished and read this job slightly differently. Update the results to use it?</span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setReq(resultOffer)
+                  setResultOffer(null)
+                  dirtyRef.current = false
+                  rank.mutate({ r: resultOffer, jd: jdText })
+                }}
+              >
+                Update results
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setResultOffer(null)}>
+                Keep these
+              </Button>
+            </div>
+          )}
+
+          {!result && rank.isPending && (
             <ul className="mt-4 space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <li key={i} className="flex gap-4 rounded-[10px] border border-line bg-surface p-5">
@@ -415,7 +447,7 @@ export default function MatchPage() {
             </div>
           )}
 
-          <ol key={result?.refined ? "refined" : "quick"} className="tl-stagger mt-4 space-y-3" data-testid="shortlist-results">
+          <ol className="tl-stagger mt-4 space-y-3" data-testid="shortlist-results">
             {result?.items.map((cv) => (
               <CandidateRow
                 key={cv.id}
@@ -439,6 +471,15 @@ export default function MatchPage() {
           </ol>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmNew}
+        onOpenChange={setConfirmNew}
+        title="Start a new job?"
+        description={`This clears the current requirements and the ${result?.total ?? ''} ranked candidates. Use “Save list” first if you want to keep them.`}
+        confirmLabel="Start new job"
+        onConfirm={reset}
+      />
 
       {selected.size > 0 && step === 2 && (
         <div className="tl-enter fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#1d2528] py-2 pr-2 pl-4 text-sm whitespace-nowrap text-white shadow-e2 sm:gap-3 sm:pl-5" data-testid="bulk-bar">
