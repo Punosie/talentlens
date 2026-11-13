@@ -155,11 +155,14 @@ export function PageHeader({ title, description, actions }: { title: string; des
 }
 
 export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+  // NFKC turns decorative letters some people use (𝐕𝐞𝐧𝐤𝐚𝐭) into plain ones; \p{L} accepts any script
   const initials = name
+    .normalize('NFKC')
     .split(/[\s_.-]+/)
-    .filter((w) => /^[A-Za-zÀ-ÿ]/.test(w))
+    .map((w) => Array.from(w)[0] ?? '')
+    .filter((c) => /\p{L}/u.test(c))
     .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
+    .map((c) => c.toUpperCase())
     .join('')
   // stable, calm hue per person
   let h = 0
