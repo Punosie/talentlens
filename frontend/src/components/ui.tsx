@@ -22,16 +22,9 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   busy?: boolean
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', busy, className, children, disabled, type = 'button', ...rest },
-  ref,
-) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      disabled={disabled || busy}
-      className={cn(
+/** Button styling, also for links that should look like buttons (e.g. "Open on LinkedIn"). */
+export function buttonClass(variant: NonNullable<ButtonProps['variant']> = 'secondary', size: NonNullable<ButtonProps['size']> = 'md', className?: string) {
+  return cn(
         'inline-flex shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:active:scale-100',
         'disabled:cursor-not-allowed disabled:opacity-50',
         size === 'sm' && 'h-8 px-3 text-[13px]',
@@ -43,7 +36,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         variant === 'danger' && 'border border-line-strong bg-surface text-danger hover:bg-danger-soft',
         variant === 'danger-solid' && 'bg-danger text-white hover:opacity-90',
         className,
-      )}
+  )
+}
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'secondary', size = 'md', busy, className, children, disabled, type = 'button', ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      disabled={disabled || busy}
+      className={buttonClass(variant, size, className)}
       {...rest}
     >
       {busy && <LoaderCircle className="size-4 animate-spin" aria-hidden />}

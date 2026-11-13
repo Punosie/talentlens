@@ -80,12 +80,6 @@ export default function MatchPage() {
   const [explanations, setExplanations] = useState<Record<number, Explanation | 'loading' | string>>({})
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
-  const [aiOffer, setAiOffer] = useState<Requirements | null>(null)
-  const dirtyRef = useRef(false)
-  const stepRef = useRef<Step>(step)
-  useEffect(() => {
-    stepRef.current = step
-  }, [step])
   const openSave = (title: string | null) => {
     setSaveName(title || 'Shortlist')
     setSaveOpen(true)
@@ -110,47 +104,24 @@ export default function MatchPage() {
     onSuccess: (r) => setResult(r),
     onError: (e: Error) => toast(e.message, 'error'),
   })
-  // smart reading finished after the candidates were shown: offer it, never reshuffle on its own
-  const [resultOffer, setResultOffer] = useState<Requirements | null>(null)
   const [confirmNew, setConfirmNew] = useState(false)
 
-  const aiParse = useMutation({
-    mutationFn: (input: { text?: string; file?: File }) => api.parseJd({ ...input, mode: 'ai' }),
-    onSuccess: (r) => {
-      if (r.warning) return
-      if (dirtyRef.current) {
-        setAiOffer(r.requirements)
-        return
-      }
-      if (stepRef.current === 2) {
-        setResultOffer(r.requirements)
-        return
-      }
-      setReq(r.requirements)
-      toast('Smart reading improved the requirements')
-    },
-  })
-
+  // One request does the whole reading on the server: rules first, then smart reading (local AI)
+  // improves them. Requirements appear only when both are done, so nothing changes afterwards.
   const parse = useMutation({
-    mutationFn: (input: { text?: string; file?: File }) => api.parseJd({ ...input, mode: 'rules' }),
-    onSuccess: (r, input) => {
+    mutationFn: (input: { text?: string; file?: File }) => api.parseJd({ ...input, mode: llmOk ? 'ai' : 'rules' }),
+    onSuccess: (r) => {
       setJdText(r.jd_text)
       setReq(r.requirements)
-      dirtyRef.current = false
-      setAiOffer(null)
-      setResultOffer(null)
       setResult(null)
       setSelected(new Set())
       setStep(1)
-      if (llmOk) aiParse.mutate(input)
+      if (r.warning) toast(r.warning)
     },
     onError: (e: Error) => toast(e.message, 'error'),
   })
 
-  const edit = (patch: Partial<Requirements>) => {
-    setReq((r) => ({ ...(r ?? EMPTY_REQ), ...patch, source: 'user' }))
-    dirtyRef.current = true
-  }
+  const edit = (patch: Partial<Requirements>) => setReq((r) => ({ ...(r ?? EMPTY_REQ), ...patch, source: 'user' }))
 
   const readJd = () => {
     if (jdFile) parse.mutate({ file: jdFile })
@@ -160,7 +131,6 @@ export default function MatchPage() {
 
   const showCandidates = () => {
     if (!req) return
-    setResultOffer(null)
     setStep(2)
     rank.mutate({ r: req, jd: jdText })
   }
@@ -207,8 +177,6 @@ export default function MatchPage() {
     setJdInput('')
     setJdFile(null)
     setSelected(new Set())
-    setAiOffer(null)
-    setResultOffer(null)
     setConfirmNew(false)
     setStep(0)
   }
@@ -240,20 +208,26 @@ export default function MatchPage() {
       {/* ---------- step 1: job description ---------- */}
       {step === 0 && (
         <Card className="mt-6 p-6 md:p-8">
-          <JdInput
-            text={jdInput}
-            onText={setJdInput}
-            file={jdFile}
-            onFile={setJdFile}
-          />
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[13px] text-muted">
-              {llmOk ? 'TalentLens reads the requirements instantly, then smart reading double-checks them.' : 'Requirements are read automatically. You can adjust them next.'}
-            </p>
-            <Button variant="primary" size="lg" onClick={readJd} busy={parse.isPending} data-testid="jd-submit">
-              Read requirements <ArrowRight className="size-4" />
-            </Button>
-          </div>
+          {parse.isPending ? (
+            <ReadingJob smart={llmOk} />
+          ) : (
+            <>
+              <JdInput
+                text={jdInput}
+                onText={setJdInput}
+                file={jdFile}
+                onFile={setJdFile}
+              />
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[13px] text-muted">
+                  {llmOk ? 'TalentLens reads the job with its local AI. This takes about 20 seconds.' : 'Requirements are read automatically. You can adjust them next.'}
+                </p>
+                <Button variant="primary" size="lg" onClick={readJd} data-testid="jd-submit">
+                  Read requirements <ArrowRight className="size-4" />
+                </Button>
+              </div>
+            </>
+          )}
         </Card>
       )}
 
@@ -265,29 +239,7 @@ export default function MatchPage() {
               <h2 className="text-[18px] font-semibold">Check the requirements</h2>
               <p className="mt-1 text-[14px] text-muted">These are what TalentLens found in the job description. Add or remove anything, then continue.</p>
             </div>
-            {aiParse.isPending && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-sunken px-3 py-1 text-[12.5px] text-muted" data-testid="ai-refining">
-                <Spinner className="size-3.5" /> Smart reading is double-checking…
-              </span>
-            )}
           </div>
-
-          {aiOffer && (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border-l-2 border-mark bg-mark-soft px-4 py-3 text-sm">
-              <Sparkles className="size-4" /> Smart reading suggested slightly different requirements. Your edits were kept.
-              <Button
-                size="sm"
-                onClick={() => {
-                  setReq(aiOffer)
-                  setAiOffer(null)
-                  dirtyRef.current = false
-                }}
-              >
-                Use suggestion
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setAiOffer(null)}>Keep mine</Button>
-            </div>
-          )}
 
           <div className="mt-6 grid gap-x-8 gap-y-6 md:grid-cols-2" data-testid="requirements">
             <div className="md:col-span-2">
@@ -404,27 +356,6 @@ export default function MatchPage() {
               </div>
             )}
           </div>
-
-          {resultOffer && (
-            <div className="tl-enter mt-4 flex flex-wrap items-center gap-3 rounded-md border-l-2 border-mark bg-mark-soft px-4 py-3 text-sm" data-testid="result-offer">
-              <Sparkles className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1">Smart reading finished and read this job slightly differently. Update the results to use it?</span>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setReq(resultOffer)
-                  setResultOffer(null)
-                  dirtyRef.current = false
-                  rank.mutate({ r: resultOffer, jd: jdText })
-                }}
-              >
-                Update results
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setResultOffer(null)}>
-                Keep these
-              </Button>
-            </div>
-          )}
 
           {!result && rank.isPending && (
             <ul className="mt-4 space-y-3">
@@ -768,5 +699,32 @@ function CandidateRow({
         </div>
       </div>
     </li>
+  )
+}
+
+/** Shown while the server reads the job (rules + local AI). Counts up so a 20-second wait feels alive. */
+function ReadingJob({ smart }: { smart: boolean }) {
+  const [secs, setSecs] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setSecs((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="flex flex-col items-center gap-4 py-10 text-center" role="status" aria-live="polite" data-testid="jd-reading">
+      <span className="flex size-12 items-center justify-center rounded-full bg-sunken">
+        <Sparkles className="size-5 animate-pulse" />
+      </span>
+      <div>
+        <p className="text-[16px] font-semibold">Reading the job description…</p>
+        <p className="mt-1 text-[14px] text-muted">
+          {smart
+            ? 'Finding the must-have skills, experience, location and industry with the local AI. Usually about 20 seconds.'
+            : 'Finding the must-have skills, experience, location and industry.'}
+        </p>
+      </div>
+      <p className="inline-flex items-center gap-2 text-[13px] text-muted tabular-nums">
+        <Spinner className="size-3.5" /> {secs}s
+      </p>
+    </div>
   )
 }

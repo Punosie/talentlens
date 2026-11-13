@@ -121,19 +121,12 @@ test.describe('search resumes', () => {
     await drawer.getByRole('button', { name: 'Download' }).click()
     expect((await download).suggestedFilename()).toBe('Alice_Example_Resume.pdf')
 
-    // headless Chromium turns PDF popups into downloads, so capture the URL window.open gets
-    await page.evaluate(() => {
-      const w = window as unknown as { __opened: string[] }
-      w.__opened = []
-      window.open = ((u: string) => {
-        w.__opened.push(u)
-        return null
-      }) as typeof window.open
-    })
-    await drawer.getByRole('button', { name: 'Open original' }).click()
-    const opened = await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)
-    expect(opened[0]).toMatch(/^\/api\/cvs\/\d+\/file$/)
-    const inline = await page.request.get(opened[0]!)
+    // "Open original" is a plain link to a new tab (never popup-blocked); check where it points
+    const original = drawer.getByRole('link', { name: 'Open original' })
+    await expect(original).toHaveAttribute('target', '_blank')
+    const href = await original.getAttribute('href')
+    expect(href).toMatch(/^\/api\/cvs\/\d+\/file$/)
+    const inline = await page.request.get(href!)
     expect(inline.headers()['content-type']).toBe('application/pdf')
     expect(inline.headers()['content-disposition']).toMatch(/^inline/)
 

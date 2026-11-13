@@ -5,7 +5,7 @@ import { Briefcase, Download, ExternalLink, GraduationCap, Mail, MapPin, Phone, 
 import { type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { cn, displayName, years } from '../lib/utils'
-import { Avatar, Button, Chip, Skeleton } from './ui'
+import { Avatar, Button, Chip, Skeleton, buttonClass } from './ui'
 
 /** Candidate profile side panel with Overview / Resume / Source tabs. */
 export function CandidateProfile({
@@ -41,19 +41,20 @@ export function CandidateProfile({
               <p className="mt-0.5 truncate text-sm text-muted">{cv?.title || (cv ? 'Job title not found' : '')}</p>
               {cv && isLinkedIn && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {cv.profile_url && (
-                    <Button size="sm" variant="primary" onClick={() => window.open(cv.profile_url!, '_blank', 'noopener')}>
+                  {cv.profile_url && /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(cv.profile_url) && (
+                    // a real link: never caught by popup blockers, and middle-click / copy link work
+                    <a href={cv.profile_url} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm')} data-testid="open-linkedin">
                       <ExternalLink className="size-4" /> Open on LinkedIn
-                    </Button>
+                    </a>
                   )}
                   <SourceBadges cv={cv} />
                 </div>
               )}
               {cv && !isLinkedIn && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="primary" onClick={() => window.open(api.fileUrl(cv.id), '_blank')}>
+                  <a href={api.fileUrl(cv.id)} target="_blank" rel="noopener" className={buttonClass('primary', 'sm')}>
                     <ExternalLink className="size-4" /> Open original
-                  </Button>
+                  </a>
                   <a href={api.fileUrl(cv.id, true)} download>
                     <Button size="sm" tabIndex={-1}>
                       <Download className="size-4" /> Download
