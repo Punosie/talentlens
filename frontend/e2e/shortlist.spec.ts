@@ -30,7 +30,11 @@ test.describe('match to a job', () => {
     await expect(first.getByTestId('match-label')).toHaveText(/(Excellent|Strong|Fair|Weak) match/)
     await expect(first.getByTestId('match-reason')).toContainText('must-have skill')
     await expect(page.getByTestId('shortlist-count')).toContainText('candidates ranked')
-    await expect(page.getByTestId('shortlist-count')).toContainText('order fine-tuned')
+
+    // "New job" asks before throwing results away
+    await page.getByTestId('new-jd').click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByTestId('shortlist-row').first()).toBeVisible()
 
     await first.getByRole('button', { name: 'Score details' }).click()
     await expect(first).toContainText('Must-have skills')

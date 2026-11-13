@@ -39,6 +39,7 @@ WEIGHTS = {
 RETRIEVE_K = 120
 RERANK_K = 30  # cross-encoder only for the closest candidates...
 RERANK_MARGIN = 0.15  # ...within this cosine distance of the best match
+RERANK_CHARS = 1200  # text per candidate given to the cross-encoder
 
 
 @dataclass
@@ -137,8 +138,8 @@ class Shortlister:
         sources: list[str] | None = None,
         owners: list[str] | None = None,
     ) -> dict[str, Any]:
-        """rerank=False answers in well under a second (embeddings + skills only); the UI shows
-        that immediately, then calls again with rerank=True to refine the order of the top."""
+        """rerank=False: embeddings + skills only. rerank=True (what the UI uses) also re-scores the
+        closest candidates with the cross-encoder, so the list is shown once, in its final order."""
         t0 = time.perf_counter()
         query = req.query_text() or jd_text[:1500]
         scope_sql, scope_args = Filters(sources=sources or [], owners=owners or []).sql()
@@ -284,7 +285,9 @@ class Shortlister:
             domains=loads_list(row["domains"]),
             summary=row["summary"],
         )
-        return embedding_text(f, text)[:2500]
+        # title, skills, years and summary come first; the cross-encoder cost grows with length,
+        # and the start of a profile carries nearly all of the signal
+        return embedding_text(f, text)[:RERANK_CHARS]
 
 
 def _person_key(item: dict[str, Any]) -> str | None:
