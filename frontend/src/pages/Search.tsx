@@ -402,7 +402,7 @@ export default function SearchPage() {
             </div>
           )}
 
-          <ul className="mt-2 space-y-2" data-testid="results">
+          <ul key={`${params.q ?? ""}|${sp.toString()}`} className="tl-stagger mt-2 space-y-2" data-testid="results">
             {results.isLoading &&
               Array.from({ length: 5 }).map((_, i) => (
                 <li key={i} className="flex gap-4 rounded-[10px] border border-line bg-surface p-4">
@@ -445,7 +445,7 @@ function ResultCard({ cv, selectedSkills, onOpen }: { cv: CVSummary; selectedSki
       <button
         type="button"
         onClick={onOpen}
-        className="group flex w-full gap-4 rounded-[10px] border border-line bg-surface p-4 text-left shadow-e1 transition-colors hover:border-ink"
+        className="tl-lift group flex w-full gap-4 rounded-[10px] border border-line bg-surface p-4 text-left shadow-e1 hover:border-ink"
         data-testid="result-row"
       >
         <Avatar name={name} size={44} />

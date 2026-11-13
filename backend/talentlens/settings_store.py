@@ -18,7 +18,10 @@ DEFAULTS: dict[str, Any] = {
     "ai_paused": False,  # background smart reading paused
     "ollama_model": None,  # None = use config default
     "onboarded": False,  # first-run guide completed
-    "mongodb_uri": None,  # connections database chosen in the app
+    "mongodb_uri": None,  # connections database chosen in the app (advanced)
+    "team_server": None,  # team web app (from an invite link)
+    "team_token": None,  # personal access token for it (never shown)
+    "team_name": None,  # the name the invite was made for
     "device": None,  # "cpu" | "cuda", chosen by the install-time benchmark
     "device_benchmark": None,  # its measurements
 }

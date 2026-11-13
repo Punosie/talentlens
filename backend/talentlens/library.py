@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .ai.embed import Embedder
 from .config import CV_EXTENSIONS, Settings
-from .connections import ConnectionsSync
+from .connections import Backend, ConnectionsSync
 from .db import Database
 from .enrich import Enricher
 from .indexer import Indexer
@@ -90,7 +90,7 @@ class Library:
         embedder: Embedder,
         *,
         ai_paused: bool = False,
-        mongodb_uri: str | None = None,
+        connections_backend: Backend | None = None,
     ) -> Library:
         lib_dir = settings.libraries_dir / library_key(folder)
         lib_dir.mkdir(parents=True, exist_ok=True)
@@ -107,14 +107,8 @@ class Library:
         queue = IndexQueue(indexer)
         queue.ai_paused = ai_paused
         connections = None
-        if mongodb_uri:
-            connections = ConnectionsSync(
-                db,
-                indexer,
-                mongodb_uri,
-                database=settings.mongodb_db,
-                collection=settings.mongodb_collection,
-            )
+        if connections_backend is not None:
+            connections = ConnectionsSync(db, indexer, backend=connections_backend)
             queue.after_scan.append(connections.run)
         return cls(
             connections=connections,

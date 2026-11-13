@@ -7,7 +7,7 @@ TalentLens is a private resume library and job-matching tool. It runs entirely o
 - **Match to a job:** paste or upload a job description. TalentLens reads the requirements, which you can adjust, and ranks every candidate with a clear match label, a one-line reason and a score breakdown. Save lists and export them to Excel (CSV).
 - **Private by design:** OCR, search and the AI ("smart reading") all run on your computer. Nothing is uploaded, and it works offline once installed.
 
-- **Your LinkedIn connections too (optional):** connect a MongoDB "connections database" in **Settings**. Your connections become searchable and matchable next to your resumes, each showing which LinkedIn account they're connected **via**. Resumes you add are saved back to the database, linked to the matching person when the CV contains their LinkedIn URL. Matching and AI still run on your computer; only the database lives in MongoDB.
+- **Your team's LinkedIn connections too (optional):** click the invite link your team sends you (or paste it in **Settings → Team connections**). Your team's connections become searchable and matchable next to your resumes, each showing which LinkedIn account they're connected **via**, and resumes you add are shared with the team. No database setup or passwords. Matching and AI still run on your computer.
 - **Uses your NVIDIA GPU on Windows** for search embeddings and re-ranking when one is available (about 70× faster than the CPU for large imports), and falls back to the CPU automatically. Set `TALENTLENS_DEVICE=cpu` to force the CPU.
 
 ![Match candidates to a job](docs/images/shortlist.png)
@@ -110,6 +110,17 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1      # Windows
 Add `-DryRun` / `--dry-run` to see exactly what would be removed without changing anything, or `-All -Yes` / `--all --yes` to remove everything without questions.
 
 ---
+
+## Join your team (optional)
+
+If your team shares its LinkedIn connections, someone sends you an **invite link**:
+
+1. Open TalentLens.
+2. Open the invite link in your browser and click **Connect TalentLens**, then **Connect**.
+
+That's it. TalentLens brings in the team's connections in the background (a few minutes the first time) and keeps them up to date. Disconnect any time in **Settings → Team connections**.
+
+You can also connect during setup: `setup.ps1 -Invite "<link>"` (Windows) or `bash scripts/macos/setup.sh --invite "<link>"` (Mac), or later with `uv run talentlens join "<link>"`.
 
 ## Using TalentLens
 

@@ -32,7 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || busy}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium whitespace-nowrap transition-colors duration-150',
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:active:scale-100',
         'disabled:cursor-not-allowed disabled:opacity-50',
         size === 'sm' && 'h-8 px-3 text-[13px]',
         size === 'md' && 'h-10 px-4 text-sm',
@@ -268,12 +268,12 @@ export function Modal({
   return (
     <Dialog.Root open={open} onOpenChange={(o) => (dismissable || o ? onOpenChange(o) : undefined)}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px] dark:bg-black/60" />
+        <Dialog.Overlay className="tl-overlay fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px] dark:bg-black/60" />
         <Dialog.Content
           onEscapeKeyDown={(e) => !dismissable && e.preventDefault()}
           onPointerDownOutside={(e) => !dismissable && e.preventDefault()}
           className={cn(
-            'tl-enter fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto',
+            'tl-modal fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto',
             'rounded-[14px] border border-line bg-surface p-6 shadow-e2 outline-none md:p-8',
             wide ? 'max-w-2xl' : 'max-w-md',
           )}

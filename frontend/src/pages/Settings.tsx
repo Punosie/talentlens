@@ -195,8 +195,8 @@ export default function SettingsPage() {
           </Section>
 
           <Section
-            title="Connections database"
-            description="Bring in your LinkedIn connections from MongoDB so you can search and match them with your resumes. Resumes you add here are saved to the database too, linked to the right person."
+            title="Team connections"
+            description="Search and match your team's LinkedIn connections alongside your resumes. Resumes you add here are shared with the team, linked to the right person."
           >
             <ConnectionsSettings settings={d} />
           </Section>

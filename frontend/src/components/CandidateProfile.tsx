@@ -28,9 +28,9 @@ export function CandidateProfile({
   return (
     <Dialog.Root open={cvId !== null} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/25 dark:bg-black/50" />
+        <Dialog.Overlay className="tl-overlay fixed inset-0 z-40 bg-black/25 dark:bg-black/50" />
         <Dialog.Content
-          className="fixed top-0 right-0 z-50 flex h-full w-full max-w-[760px] flex-col border-l border-line bg-surface shadow-e2 outline-none"
+          className="tl-drawer fixed top-0 right-0 z-50 flex h-full w-full max-w-[760px] flex-col border-l border-line bg-surface shadow-e2 outline-none"
           data-testid="cv-drawer"
           aria-describedby={undefined}
         >
@@ -101,7 +101,7 @@ export function CandidateProfile({
                 ))}
               </Tabs.List>
 
-              <Tabs.Content value="overview" className="min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-none">
+              <Tabs.Content value="overview" className="tl-stagger min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-none">
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                   <Fact icon={<Briefcase className="size-4" />} label="Experience">
                     {years(cv.years_exp)}

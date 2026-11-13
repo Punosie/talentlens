@@ -154,6 +154,67 @@ body {
   border-radius: 4px;
 }
 
+
+/* ---------- motion: quick, quiet, consistent (all disabled by prefers-reduced-motion) ---------- */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+@keyframes tl-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tl-scale-in {
+  /* scale only: Tailwind v4 centres with the separate `translate` property */
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tl-drawer-in {
+  from { opacity: 0.4; transform: translateX(32px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tl-drawer-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(32px); }
+}
+@keyframes tl-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tl-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes tl-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* page entrance on navigation */
+.tl-page { animation: tl-rise 280ms var(--ease-out) both; }
+
+/* list items cascade in (first 12 staggered, the rest together) */
+.tl-stagger > * { animation: tl-rise 320ms var(--ease-out) both; }
+.tl-stagger > *:nth-child(2) { animation-delay: 25ms; }
+.tl-stagger > *:nth-child(3) { animation-delay: 50ms; }
+.tl-stagger > *:nth-child(4) { animation-delay: 75ms; }
+.tl-stagger > *:nth-child(5) { animation-delay: 100ms; }
+.tl-stagger > *:nth-child(6) { animation-delay: 125ms; }
+.tl-stagger > *:nth-child(7) { animation-delay: 150ms; }
+.tl-stagger > *:nth-child(8) { animation-delay: 175ms; }
+.tl-stagger > *:nth-child(9) { animation-delay: 200ms; }
+.tl-stagger > *:nth-child(10) { animation-delay: 225ms; }
+.tl-stagger > *:nth-child(11) { animation-delay: 250ms; }
+.tl-stagger > *:nth-child(n + 12) { animation-delay: 275ms; }
+
+/* cards that open something: gentle lift */
+.tl-lift {
+  transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out), border-color 150ms ease;
+}
+.tl-lift:hover { transform: translateY(-1px); box-shadow: var(--shadow-e2, 0 6px 18px rgb(0 0 0 / 0.08)); }
+.tl-lift:active { transform: translateY(0); }
+
+/* side drawer + modal + overlays (Radix data-state) */
+.tl-drawer[data-state="open"] { animation: tl-drawer-in 260ms var(--ease-out) both; }
+.tl-drawer[data-state="closed"] { animation: tl-drawer-out 180ms var(--ease-in-out) both; }
+.tl-overlay[data-state="open"] { animation: tl-fade 200ms ease-out both; }
+.tl-overlay[data-state="closed"] { animation: tl-fade-out 160ms ease-in both; }
+.tl-modal[data-state="open"] { animation: tl-scale-in 220ms var(--ease-out) both; }
+
+/* score bars grow in from the left */
+.tl-grow > * { transform-origin: left; animation: tl-grow 520ms var(--ease-out) both; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

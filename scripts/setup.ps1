@@ -17,7 +17,8 @@ param(
     [switch]$NoAI,             # skip Ollama + LLM model (rules-only extraction)
     [switch]$SkipTests,        # skip the Playwright browser download
     [switch]$WithLibreOffice,  # install LibreOffice for .doc files (not needed if MS Word is installed)
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    [string]$Invite            # invite link from your team (connects to the shared connections)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -86,6 +87,7 @@ if ($CvDir) {
     Ok 'Resume folder: choose it in the app on first start (or it is found automatically).'
 }
 if ($NoAI) { Invoke-Native 'set-ai' { uv run --frozen talentlens set-ai off } }
+if ($Invite) { uv run --frozen talentlens join "$Invite"; if ($LASTEXITCODE -ne 0) { Warn 'Could not use the invite link; paste it later in Settings.' } }
 # --- 4. web UI ----------------------------------------------------------------------
 Step 'Building the web UI'
 Push-Location (Join-Path $Root 'frontend')

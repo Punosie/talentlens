@@ -20,7 +20,7 @@ export function ScoreBar({ score, breakdown, weights }: { score: number; breakdo
         {Math.round(score)}
       </span>
       <div
-        className="flex h-2.5 w-36 overflow-hidden rounded-sm bg-sunken"
+        className="tl-grow flex h-2.5 w-36 overflow-hidden rounded-sm bg-sunken"
         role="img"
         aria-label={`Score ${Math.round(score)} of 100. ${tip.replace(/\n/g, '; ')}`}
       >

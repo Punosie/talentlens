@@ -17,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 MODEL="qwen2.5:3b-instruct"
-CV_DIR="" NO_AI=0 WITH_LO=0 SKIP_TESTS=0 NO_APP=0
+CV_DIR="" NO_AI=0 WITH_LO=0 SKIP_TESTS=0 NO_APP=0 INVITE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cv-dir) CV_DIR="${2:?--cv-dir needs a path}"; shift 2 ;;
@@ -25,6 +25,7 @@ while [[ $# -gt 0 ]]; do
     --with-libreoffice) WITH_LO=1; shift ;;
     --skip-tests) SKIP_TESTS=1; shift ;;
     --no-app) NO_APP=1; shift ;;
+    --invite) INVITE="${2:?--invite needs the invite link}"; shift 2 ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -88,6 +89,7 @@ else
   ok "Resume folder: you'll choose it in the app the first time it opens."
 fi
 [[ $NO_AI -eq 1 ]] && uv run --frozen talentlens set-ai off
+[[ -n "$INVITE" ]] && { uv run --frozen talentlens join "$INVITE" || warn "Could not use the invite link; paste it later in Settings."; }
 
 # --- 4. web UI -------------------------------------------------------------------
 step "Building the web UI"
