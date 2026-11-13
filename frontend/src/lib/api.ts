@@ -156,7 +156,12 @@ export type AppSettings = {
     available: boolean
     error: string | null
   }
-  connections: ConnectionsStatus & { locked: boolean; host: string | null }
+  connections: ConnectionsStatus & {
+    locked: boolean
+    host: string | null
+    mode: 'team' | 'mongo' | 'off'
+    team: { server: string; name: string } | null
+  }
   device?: {
     active: 'cpu' | 'cuda'
     model: string | null
@@ -332,6 +337,8 @@ export const api = {
   checkFolder: (path: string) =>
     request<{ ok: boolean; path?: string; count: number; message: string }>('/api/settings/check-folder', json({ path })),
   pickFolder: () => request<{ path: string | null; cancelled: boolean }>('/api/system/pick-folder', { method: 'POST' }),
+  joinTeam: (invite: string) => request<{ ok: boolean; server: string; name: string }>('/api/connections/join', json({ invite })),
+  leaveTeam: () => request<{ ok: boolean }>('/api/connections/leave', { method: 'POST' }),
   connectionsStatus: () => request<ConnectionsStatus>('/api/connections/status'),
   syncConnections: (full = false) =>
     request<ConnectionsStatus>(`/api/connections/sync${qs({ full })}`, { method: 'POST' }),

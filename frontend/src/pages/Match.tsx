@@ -415,7 +415,7 @@ export default function MatchPage() {
             </div>
           )}
 
-          <ol className="mt-4 space-y-3" data-testid="shortlist-results">
+          <ol key={result?.refined ? "refined" : "quick"} className="tl-stagger mt-4 space-y-3" data-testid="shortlist-results">
             {result?.items.map((cv) => (
               <CandidateRow
                 key={cv.id}

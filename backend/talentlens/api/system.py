@@ -81,7 +81,9 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "benchmark": st.prefs.get("device_benchmark"),
         },
         "connections": {
-            "configured": bool(st.mongodb_uri()),
+            "configured": bool(st.team() or st.mongodb_uri()),
+            "mode": "team" if st.team() else ("mongo" if st.mongodb_uri() else "off"),
+            "team": {"server": t["server"], "name": t["name"]} if (t := st.team()) else None,
             "locked": st.settings.mongodb_locked,
             "host": _mongo_host(st.mongodb_uri()),
             **(lib.connections.snapshot() if lib and lib.connections else {}),

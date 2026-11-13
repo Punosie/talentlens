@@ -39,7 +39,7 @@ function SavedList() {
           When you find good candidates for a job, save them as a list to come back to later or export.
         </Empty>
       )}
-      <ul className="grid gap-4 sm:grid-cols-2" data-testid="saved-list">
+      <ul className="tl-stagger grid gap-4 sm:grid-cols-2" data-testid="saved-list">
         {list.data?.map((s) => (
           <li key={s.id}>
             <Link to={`/saved/${s.id}`} className="flex h-full flex-col gap-2 rounded-[12px] border border-line bg-surface p-5 shadow-e1 transition-colors hover:border-ink">

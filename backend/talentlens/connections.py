@@ -24,6 +24,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from .ai import rules, taxonomy
 from .db import Database, loads_list
@@ -284,42 +285,93 @@ def _default_client(uri: str) -> Any:
     return MongoClient(uri, serverSelectionTimeoutMS=10000, appname="talentlens")
 
 
-class ConnectionsSync:
+# ------------------------------------------------------------------ transports
+
+
+class AccessRemoved(Exception):
+    """The team server rejected our token (revoked, or never valid)."""
+
+
+class SharingOff(Exception):
+    """The team server doesn't accept resumes (yet); syncing connections still works."""
+
+
+class MongoBackend:
+    """Direct connection with a MongoDB connection string (advanced / admin mode)."""
+
+    kind = "mongo"
+
     def __init__(
         self,
-        db: Database,
-        indexer: Indexer,
-        uri: str | None,
+        uri: str,
         *,
         database: str = "linkedin",
         collection: str = "connections",
         client_factory: ClientFactory = _default_client,
-        clock: Callable[[], float] = time.time,
     ) -> None:
-        self.db = db
-        self.indexer = indexer
         self.uri = uri
         self.database = database
         self.collection = collection
         self._client_factory = client_factory
         self._client: Any = None
-        self._clock = clock
-        self._lock = threading.Lock()
-        self.full_next = False  # set by "sync now (full)"; consumed by the next run
-        self.status = SyncStatus(configured=bool(uri), state="idle" if uri else "off")
-        self.status.last_pull_at = db.get_meta("mongo_last_pull_at")
-        self.status.last_push_at = db.get_meta("mongo_last_push_at")
-        self.status.pulled = self._count_local()
+        self.identity = f"mongo:{_mongo_host(uri)}"
 
-    # -- plumbing
     def _col(self) -> Any:
         if self._client is None:
-            self._client = self._client_factory(self.uri or "")
+            self._client = self._client_factory(self.uri)
         return self._client[self.database][self.collection]
 
-    def _count_local(self) -> int:
-        with self.db.connect() as conn:
-            return conn.execute("SELECT COUNT(*) FROM cvs WHERE source=?", (SOURCE,)).fetchone()[0]
+    @staticmethod
+    def _query(since: datetime | None) -> dict[str, Any]:
+        q: dict[str, Any] = {"sources": SOURCE}
+        if since:
+            q["migrated_at"] = {"$gt": since}
+        return q
+
+    def count(self, since: datetime | None) -> int:
+        return self._col().count_documents(self._query(since))
+
+    def pages(self, since: datetime | None) -> Iterable[dict[str, Any]]:
+        return _pages(self._col(), self._query(since))
+
+    def push_cv(self, row: dict[str, Any]) -> tuple[str, bool]:
+        col = self._col()
+        pid, is_new = self._target_person(col, row)
+        update: dict[str, Any] = {
+            "$set": {"cv": cv_info(row), "migrated_at": datetime.now(UTC)},
+            "$addToSet": {"sources": "cv"},
+        }
+        if is_new:
+            update["$setOnInsert"] = {**cv_person_doc(row), "owners": []}
+        elif pid.startswith("cv:"):
+            # a CV-only person: their profile IS the CV, so keep it current
+            update["$set"].update(dict(cv_person_doc(row).items()))
+        col.update_one({"_id": pid}, update, upsert=True)
+        return pid, is_new
+
+    @staticmethod
+    def _target_person(col: Any, row: dict[str, Any]) -> tuple[str, bool]:
+        """Which MongoDB person this CV belongs to. Order: LinkedIn URL in the CV text ->
+        the person this file was linked to before -> same file hash -> same email -> new."""
+        lid = linkedin_id_in(row.get("text"))
+        if lid:
+            hit = col.find_one(
+                {"_id": {"$regex": f"^{re.escape(lid)}$", "$options": "i"}}, {"_id": 1}
+            )
+            if hit:
+                return str(hit["_id"]), False
+        if row.get("person_id"):
+            return str(row["person_id"]), not bool(
+                col.find_one({"_id": row["person_id"]}, {"_id": 1})
+            )
+        hit = col.find_one({"cv.sha256": row["sha256"]}, {"_id": 1})
+        if hit:
+            return str(hit["_id"]), False
+        if row.get("email"):
+            hit = col.find_one({"cv.email": row["email"]}, {"_id": 1})
+            if hit:
+                return str(hit["_id"]), False
+        return f"cv:{row['sha256'][:20].lower()}", True
 
     def close(self) -> None:
         if self._client is not None:
@@ -327,11 +379,172 @@ class ConnectionsSync:
                 self._client.close()
             self._client = None
 
+
+def check_team_server(server: str) -> str:
+    """Normalised https origin of a team server; localhost http is allowed for testing."""
+    u = urlsplit(server.strip())
+    host = (u.hostname or "").lower()
+    local = host in ("127.0.0.1", "localhost", "::1")
+    if u.scheme not in ("https", "http") or not host or (u.scheme == "http" and not local):
+        raise ValueError("The team address must be a secure https:// link.")
+    if u.username or u.password:
+        raise ValueError("The team address must not contain a username or password.")
+    return f"{u.scheme}://{u.netloc}"
+
+
+class TeamBackend:
+    """Through the team's web app with a personal access token (from an invite link).
+    MongoDB credentials never reach this computer."""
+
+    kind = "team"
+
+    def __init__(
+        self, server: str, token: str, *, transport: Any = None, timeout: float = 60.0
+    ) -> None:
+        import httpx
+
+        self.server = check_team_server(server)
+        self.identity = f"team:{self.server}"
+        self._http = httpx.Client(
+            base_url=self.server,
+            headers={"Authorization": f"Bearer {token}", "User-Agent": "TalentLens"},
+            timeout=timeout,
+            transport=transport,
+            follow_redirects=False,
+        )
+
+    def _call(self, method: str, path: str, **kw: Any) -> Any:
+        r = self._http.request(method, path, **kw)
+        if r.status_code == 401:
+            raise AccessRemoved(r.text[:200])
+        r.raise_for_status()
+        return r.json()
+
+    @staticmethod
+    def _since(since: datetime | None) -> dict[str, str]:
+        return {"since": since.astimezone(UTC).isoformat()} if since else {}
+
+    def count(self, since: datetime | None) -> int:
+        d = self._call("GET", "/api/tl/people", params={"limit": 1, **self._since(since)})
+        return int(d.get("count") or 0)
+
+    def pages(self, since: datetime | None) -> Iterable[dict[str, Any]]:
+        after: str | None = None
+        while True:
+            params: dict[str, Any] = {"limit": PAGE_SIZE, **self._since(since)}
+            if after:
+                params["after"] = after
+            d = self._call("GET", "/api/tl/people", params=params)
+            for doc in d.get("items") or []:
+                m = doc.get("migrated_at")
+                if isinstance(m, str):
+                    with contextlib.suppress(ValueError):
+                        doc["migrated_at"] = datetime.fromisoformat(m.replace("Z", "+00:00"))
+                yield doc
+            after = d.get("next")
+            if not after:
+                return
+
+    def push_cv(self, row: dict[str, Any]) -> tuple[str, bool]:
+        info = cv_info(row)
+        info.pop("updated_at", None)
+        payload = {
+            **info,
+            "name": row.get("name"),
+            "city": row.get("city"),
+            "country": row.get("country"),
+            "linkedin_id": linkedin_id_in(row.get("text")),
+            "person_id": row.get("person_id"),
+        }
+        r = self._http.post("/api/tl/cv", json=payload)
+        if r.status_code == 503:
+            raise SharingOff()
+        if r.status_code == 401:
+            raise AccessRemoved(r.text[:200])
+        r.raise_for_status()
+        d = r.json()
+        return str(d["person_id"]), bool(d.get("created"))
+
+    def whoami(self) -> dict[str, Any]:
+        return self._call("GET", "/api/tl/me")
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self._http.close()
+
+
+def redeem_invite(link: str, *, transport: Any = None) -> dict[str, str]:
+    """Turn an invite link (https://<team>/join/<code>) into {server, token, name}."""
+    import httpx
+
+    u = urlsplit(link.strip())
+    m = re.fullmatch(r"/join/([\w-]{20,40})/?", u.path or "")
+    if not m:
+        raise ValueError("That doesn't look like an invite link. It should end in /join/…")
+    server = check_team_server(f"{u.scheme}://{u.netloc}")
+    with httpx.Client(timeout=30, transport=transport, follow_redirects=False) as c:
+        r = c.post(f"{server}/api/tl/redeem", json={"code": m.group(1)})
+    if r.status_code >= 400:
+        try:
+            msg = r.json().get("error")
+        except Exception:
+            msg = None
+        raise ValueError(msg or "The invite couldn't be used. Ask for a new link.")
+    d = r.json()
+    return {"server": server, "token": d["token"], "name": d.get("name") or ""}
+
+
+def _mongo_host(uri: str) -> str:
+    rest = uri.split("://", 1)[-1]
+    return rest.split("@", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+
+
+Backend = MongoBackend | TeamBackend
+
+
+class ConnectionsSync:
+    def __init__(
+        self,
+        db: Database,
+        indexer: Indexer,
+        uri: str | None = None,
+        *,
+        backend: Backend | None = None,
+        database: str = "linkedin",
+        collection: str = "connections",
+        client_factory: ClientFactory = _default_client,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self.db = db
+        self.indexer = indexer
+        if backend is None and uri:
+            backend = MongoBackend(
+                uri, database=database, collection=collection, client_factory=client_factory
+            )
+        self.backend = backend
+        self._clock = clock
+        self._lock = threading.Lock()
+        self.full_next = False  # set by "sync now (full)"; consumed by the next run
+        ok = backend is not None
+        self.status = SyncStatus(configured=ok, state="idle" if ok else "off")
+        self.status.last_pull_at = db.get_meta("mongo_last_pull_at")
+        self.status.last_push_at = db.get_meta("mongo_last_push_at")
+        self.status.pulled = self._count_local()
+
+    # -- plumbing
+    def _count_local(self) -> int:
+        with self.db.connect() as conn:
+            return conn.execute("SELECT COUNT(*) FROM cvs WHERE source=?", (SOURCE,)).fetchone()[0]
+
+    def close(self) -> None:
+        if self.backend is not None:
+            self.backend.close()
+
     # -- one full cycle (called from the background job queue)
     def run(
         self, *, full: bool = False, progress: Callable[[int, int, str], None] | None = None
     ) -> dict[str, int]:
-        if not self.uri:
+        if self.backend is None:
             return {}
         if not self._lock.acquire(blocking=False):
             return {}
@@ -356,11 +569,12 @@ class ConnectionsSync:
         self, *, full: bool = False, progress: Callable[[int, int, str], None] | None = None
     ) -> dict[str, int]:
         self.status.state = "pulling"
-        col = self._col()
+        backend = self.backend
+        assert backend is not None
+        if self.db.get_meta("sync_source") != backend.identity:
+            full = True  # a different database/team: start from scratch
         last = None if full else self.db.get_meta("mongo_pull_cursor")
-        query: dict[str, Any] = {"sources": SOURCE}
-        if last:
-            query["migrated_at"] = {"$gt": datetime.fromisoformat(last)}
+        since = datetime.fromisoformat(last) if last else None
         started = datetime.now(UTC)
 
         with self.db.connect() as conn:
@@ -383,7 +597,7 @@ class ConnectionsSync:
         seen: set[str] = set()
         batch: list[tuple[str, dict[str, Any], str, CVFields]] = []
         newest: datetime | None = None
-        total = col.count_documents(query)
+        total = backend.count(since)
 
         # Embedding (native code, releases the GIL) runs in a worker thread while this thread
         # parses the next batch; at most one batch is in flight.
@@ -443,7 +657,7 @@ class ConnectionsSync:
             collect()
             pending = pool.submit(embed_and_write, items)
 
-        for done, doc in enumerate(_pages(col, query), start=1):
+        for done, doc in enumerate(backend.pages(since), start=1):
             rel = REL_PREFIX + str(doc["_id"])
             seen.add(rel)
             m = doc.get("migrated_at")
@@ -491,6 +705,7 @@ class ConnectionsSync:
             cursor = started.isoformat()
         if cursor:
             self.db.set_meta("mongo_pull_cursor", cursor)
+        self.db.set_meta("sync_source", backend.identity)
         now = _now()
         self.db.set_meta("mongo_last_pull_at", now)
         self.status.last_pull_at = now
@@ -524,20 +739,13 @@ class ConnectionsSync:
             ]
         if not rows:
             return {"pushed": 0}
-        col = self._col()
+        assert self.backend is not None
         linked = created = 0
         for row in rows:
-            pid, is_new = self._target_person(col, row)
-            update: dict[str, Any] = {
-                "$set": {"cv": cv_info(row), "migrated_at": datetime.now(UTC)},
-                "$addToSet": {"sources": "cv"},
-            }
-            if is_new:
-                update["$setOnInsert"] = {**cv_person_doc(row), "owners": []}
-            elif pid.startswith("cv:"):
-                # a CV-only person: their profile IS the CV, so keep it current
-                update["$set"].update({k: v for k, v in cv_person_doc(row).items()})
-            col.update_one({"_id": pid}, update, upsert=True)
+            try:
+                pid, is_new = self.backend.push_cv(row)
+            except SharingOff:
+                return {"pushed": 0, "sharing": 0}
             with self.db.write() as conn:
                 conn.execute(
                     "UPDATE cvs SET person_id=?, mongo_pushed=? WHERE id=?",
@@ -552,29 +760,6 @@ class ConnectionsSync:
         self.status.last_push_at = now
         self.status.pushed_total = self._count_pushed()
         return {"pushed": len(rows), "created": created, "linked": linked}
-
-    def _target_person(self, col: Any, row: dict[str, Any]) -> tuple[str, bool]:
-        """Which MongoDB person this CV belongs to. Order: LinkedIn URL in the CV text ->
-        the person this file was linked to before -> same file hash -> same email -> new."""
-        lid = linkedin_id_in(row.get("text"))
-        if lid:
-            hit = col.find_one(
-                {"_id": {"$regex": f"^{re.escape(lid)}$", "$options": "i"}}, {"_id": 1}
-            )
-            if hit:
-                return str(hit["_id"]), False
-        if row.get("person_id"):
-            return str(row["person_id"]), not bool(
-                col.find_one({"_id": row["person_id"]}, {"_id": 1})
-            )
-        hit = col.find_one({"cv.sha256": row["sha256"]}, {"_id": 1})
-        if hit:
-            return str(hit["_id"]), False
-        if row.get("email"):
-            hit = col.find_one({"cv.email": row["email"]}, {"_id": 1})
-            if hit:
-                return str(hit["_id"]), False
-        return f"cv:{row['sha256'][:20].lower()}", True
 
     def _count_pushed(self) -> int:
         with self.db.connect() as conn:
@@ -627,6 +812,13 @@ def _now() -> str:
 
 def _friendly_error(e: Exception) -> str:
     msg = str(e)
+    if isinstance(e, AccessRemoved):
+        return "Your access was removed. Ask the person who invited you for a new invite link."
+    name = type(e).__name__
+    if name in ("ConnectError", "ConnectTimeout", "ReadTimeout"):
+        return "Couldn't reach your team's server. Check your internet connection."
+    if name == "HTTPStatusError":
+        return "Your team's server had a problem. TalentLens will try again shortly."
     if "Authentication failed" in msg or "bad auth" in msg:
         return "MongoDB rejected the username or password."
     if "ServerSelectionTimeout" in type(e).__name__ or "timed out" in msg:

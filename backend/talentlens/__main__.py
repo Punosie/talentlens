@@ -6,6 +6,7 @@ uv run talentlens set-folder PATH remember the resume folder (same as choosing i
 uv run talentlens set-model ID    choose the local AI model (e.g. qwen2.5:1.5b-instruct)
 uv run talentlens set-ai on|off   turn the local AI on or off
 uv run talentlens benchmark       measure CPU vs GPU and use the faster
+uv run talentlens join LINK       connect to your team with an invite link
 uv run talentlens set-device auto|cpu|cuda
 """
 
@@ -130,6 +131,26 @@ def _benchmark() -> int:
     return 0
 
 
+def _join(link: str) -> int:
+    """Connect to a team from an invite link (same as pasting it in Settings)."""
+    from .connections import redeem_invite
+    from .settings_store import SettingsStore
+
+    s = get_settings()
+    s.ensure_dirs()
+    try:
+        t = redeem_invite(link)
+    except Exception as e:
+        print(f"Couldn't connect: {e}")
+        return 1
+    SettingsStore(s.settings_path).update(
+        team_server=t["server"], team_token=t["token"], team_name=t["name"]
+    )
+    who = t["name"] or "you"
+    print(f"Connected to {t['server']} as {who}. TalentLens will sync when it starts.")
+    return 0
+
+
 def _set_device(value: str) -> int:
     from .settings_store import SettingsStore
 
@@ -152,9 +173,13 @@ def main(argv: list[str] | None = None) -> None:
     a = sub.add_parser("set-ai", help="turn the local AI on or off")
     a.add_argument("value", choices=["on", "off"])
     sub.add_parser("benchmark", help="measure CPU vs GPU and save the faster")
+    j = sub.add_parser("join", help="connect to your team with an invite link")
+    j.add_argument("link")
     d = sub.add_parser("set-device", help="run the models on the cpu, the cuda GPU, or auto")
     d.add_argument("value", choices=["auto", "cpu", "cuda"])
     args = ap.parse_args(argv)
+    if args.cmd == "join":
+        sys.exit(_join(args.link))
     if args.cmd == "benchmark":
         sys.exit(_benchmark())
     if args.cmd == "set-device":

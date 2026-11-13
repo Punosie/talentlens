@@ -7,6 +7,7 @@ import { ToastProvider } from './components/ui'
 import './index.css'
 import AddPage from './pages/Add'
 import HelpPage from './pages/Help'
+import ConnectPage from './pages/Connect'
 import HomePage from './pages/Home'
 import MatchPage from './pages/Match'
 import SavedPage from './pages/Saved'
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
       { path: 'saved/:id', element: <SavedPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'help', element: <HelpPage /> },
+      { path: 'connect', element: <ConnectPage /> },
       // v0.1 addresses
       { path: 'shortlist', element: <Navigate to="/match" replace /> },
       { path: 'upload', element: <Navigate to="/add" replace /> },

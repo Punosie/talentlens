@@ -14,6 +14,7 @@ from .ai.embed import Embedder
 from .ai.llm import LLM, NoLLM
 from .ai.rerank import Reranker
 from .config import Settings, discover_cv_dirs
+from .connections import Backend, MongoBackend, TeamBackend, redeem_invite
 from .db import Database
 from .enrich import Enricher
 from .jobs import IndexQueue
@@ -97,7 +98,7 @@ class AppState:
             self.enricher,
             self.embedder,
             ai_paused=bool(self.prefs.get("ai_paused")),
-            mongodb_uri=self.mongodb_uri(),
+            connections_backend=self.connections_backend(),
         )
 
     # --- lifecycle --------------------------------------------------------
@@ -114,6 +115,57 @@ class AppState:
     def mongodb_uri(self) -> str | None:
         return self.settings.mongodb_uri or self.prefs.get("mongodb_uri") or None
 
+    def team(self) -> dict[str, str] | None:
+        server, token = self.prefs.get("team_server"), self.prefs.get("team_token")
+        if server and token:
+            return {"server": server, "token": token, "name": self.prefs.get("team_name") or ""}
+        return None
+
+    def connections_backend(self) -> Backend | None:
+        """Team (invite link) first; else a MongoDB connection string (advanced)."""
+        team = self.team()
+        if team:
+            try:
+                return TeamBackend(team["server"], team["token"])
+            except ValueError:
+                log.warning("Ignoring an invalid team server in settings")
+        uri = self.mongodb_uri()
+        if uri:
+            return MongoBackend(
+                uri,
+                database=self.settings.mongodb_db,
+                collection=self.settings.mongodb_collection,
+            )
+        return None
+
+    def _reopen(self) -> None:
+        with self._switch_lock:
+            old = self.library
+            if not old:
+                return
+            new = self._open(old.folder)
+            old.stop()
+            self.library = new
+            if self._started:
+                new.start(watch=self.settings.watch, scan=True)
+            self.extras.pop("shortlister", None)
+
+    def join_team(self, invite_link: str) -> dict[str, str]:
+        """Redeem an invite link and connect to the team (replaces any previous team)."""
+        try:
+            t = redeem_invite(invite_link)
+        except ValueError as e:
+            raise FolderProblem(str(e)) from e
+        except Exception as e:
+            raise FolderProblem("Couldn't reach your team's server. Check your internet.") from e
+        self.prefs.update(team_server=t["server"], team_token=t["token"], team_name=t["name"])
+        self._reopen()
+        return {"server": t["server"], "name": t["name"]}
+
+    def leave_team(self) -> None:
+        self.prefs.update(team_server=None, team_token=None, team_name=None)
+        self._reopen()
+
     def set_mongodb_uri(self, uri: str | None) -> None:
         """Save (or clear) the connections database and reopen the current library with it."""
         if self.settings.mongodb_locked:
@@ -125,16 +177,7 @@ class AppState:
         if uri and not uri.startswith(("mongodb://", "mongodb+srv://")):
             raise FolderProblem("That doesn't look like a MongoDB connection string.")
         self.prefs.update(mongodb_uri=uri)
-        with self._switch_lock:
-            old = self.library
-            if not old:
-                return
-            new = self._open(old.folder)
-            old.stop()
-            self.library = new
-            if self._started:
-                new.start(watch=self.settings.watch, scan=True)
-            self.extras.pop("shortlister", None)
+        self._reopen()
 
     def switch_folder(self, path: Path) -> Library:
         """Point the app at another resume folder (validated). Its library opens immediately."""

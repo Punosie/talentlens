@@ -123,7 +123,9 @@ export default function App() {
           <StatusPill status={status} />
         </header>
         <main id="main" className="min-h-0 flex-1 overflow-y-auto">
-          <Outlet context={{ status }} />
+          <div key={location.pathname} className="tl-page">
+            <Outlet context={{ status }} />
+          </div>
         </main>
       </div>
 

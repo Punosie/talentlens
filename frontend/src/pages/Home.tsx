@@ -99,7 +99,7 @@ export default function HomePage() {
               See all
             </Link>
           </div>
-          <ul className="mt-3 divide-y divide-line">
+          <ul className="tl-stagger mt-3 divide-y divide-line">
             {recent.isLoading &&
               Array.from({ length: 4 }).map((_, i) => (
                 <li key={i} className="flex items-center gap-3 py-3">
