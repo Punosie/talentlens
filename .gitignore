@@ -10,6 +10,8 @@ cvs/
 CV_COLLECTION.md
 # Test fixtures are generated at runtime; allow the tiny committed samples only
 !backend/tests/fixtures/**/*.txt
+# The generated setup guide (fictional data only); nothing else in docs/ may be a PDF
+!docs/manual/TalentLens-Setup-Guide.pdf
 
 # --- Secrets / local config -------------------------------------------------
 .env
