@@ -2,6 +2,8 @@
 
 TalentLens is a private resume library and job-matching tool. It runs entirely on your own computer, on Mac or Windows.
 
+> **New here?** Follow the illustrated [setup guide (PDF)](docs/manual/TalentLens-Setup-Guide.pdf) or watch the [3-minute setup video](docs/manual/TalentLens-Setup-Video.mp4): install, connect with your invite link, and match your first job. More in [docs/manual](docs/manual/README.md).
+
 - **Add resumes in bulk:** pick files, a whole folder or a ZIP. They become searchable automatically. Duplicates are recognised and your existing files are never changed.
 - **Search resumes:** type anything, then narrow by skills, years of experience, location and industry.
 - **Match to a job:** paste or upload a job description. TalentLens reads the requirements, which you can adjust, and ranks every candidate with a clear match label, a one-line reason and a score breakdown. Save lists and export them to Excel (CSV).
