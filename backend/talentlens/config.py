@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     mongodb_collection: str = "connections"
     connections_sync_minutes: int = 15
 
+    # Forced updates: when main on GitHub has a higher version than this install, the app asks
+    # (and requires) the user to update with one click. TALENTLENS_UPDATE_CHECK=false turns it off.
+    update_check: bool = True
+    update_repo: str = "Punosie/talentlens"
+    update_branch: str = "main"
+    update_check_hours: float = 6.0
+
     @field_validator("cv_dir", "data_dir", "cv_index_csv", mode="before")
     @classmethod
     def _expand(cls, v: object) -> object:

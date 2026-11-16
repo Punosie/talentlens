@@ -105,6 +105,7 @@ def settings(tmp_path: Path, cv_dir: Path) -> Settings:
         embeddings="mock",
         watch=False,
         scan_on_startup=False,
+        update_check=False,  # never call GitHub from tests
         _env_file=None,  # never read the developer's .env in tests
     )
 

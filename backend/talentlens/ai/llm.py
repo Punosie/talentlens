@@ -32,15 +32,25 @@ class LLM(Protocol):
 
 
 class OllamaLLM:
+    THINK_BUDGET = 3072  # extra tokens a thinking model may spend reasoning before it answers
+
     def __init__(
-        self, base_url: str, model: str, timeout_s: float = 120.0, num_ctx: int = 2048
+        self,
+        base_url: str,
+        model: str,
+        timeout_s: float = 120.0,
+        num_ctx: int = 2048,
+        think: bool | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.name = f"ollama:{model}"
-        self.timeout_s = timeout_s
+        # thinking takes longer: give it room before a call counts as failed
+        self.timeout_s = timeout_s * 3 if think else timeout_s
         # A small context keeps the whole model on modest GPUs (e.g. 2 GB) and speeds up reading
         self.num_ctx = num_ctx
+        # True/False is sent as Ollama's `think`; None for models without a thinking switch
+        self.think = think
         self._last_check = 0.0
         self._last_ok = False
         self._last_error: str | None = None
@@ -82,8 +92,14 @@ class OllamaLLM:
             "format": schema,
             "stream": False,
             "keep_alive": "2h",
-            "options": {"temperature": 0, "num_ctx": self.num_ctx, "num_predict": max_tokens},
+            "options": {
+                "temperature": 0,
+                "num_ctx": self.num_ctx,
+                "num_predict": max_tokens + (self.THINK_BUDGET if self.think else 0),
+            },
         }
+        if self.think is not None:
+            payload["think"] = self.think
         last: Exception | None = None
         for attempt in range(2):
             try:
@@ -109,6 +125,9 @@ class OllamaLLM:
             "keep_alive": "2h",
             "options": {"temperature": 0.2, "num_ctx": self.num_ctx, "num_predict": max_tokens},
         }
+        if self.think is not None:
+            # short explanations stream straight away; reasoning would delay the first words
+            payload["think"] = False
         try:
             with httpx.stream(
                 "POST", f"{self.base_url}/api/chat", json=payload, timeout=self.timeout_s

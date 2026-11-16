@@ -121,6 +121,7 @@ def main() -> None:
             watch=False,
             scan_on_startup=True,
             discover=False,  # never pick up a real folder on the developer's machine
+            update_check=False,  # never call GitHub from tests
             _env_file=None,
         )
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, log_level="warning")
@@ -142,6 +143,7 @@ def main() -> None:
         embeddings="fastembed" if args.demo else "mock",
         watch=True,
         scan_on_startup=True,
+        update_check=False,  # never call GitHub from tests
         _env_file=None,
     )
     uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, log_level="warning")

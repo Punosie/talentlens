@@ -40,7 +40,18 @@ def build_llm(settings: Settings) -> LLM:
         return MockLLM()
     if settings.llm == "off":
         return NoLLM()
-    return OllamaLLM(settings.ollama_url, settings.ollama_model, settings.ollama_timeout_s)
+    from .models import get as model_info
+
+    info = model_info(settings.ollama_model)
+    if info is None:  # a model set in .env that isn't in the catalog: keep the old behaviour
+        return OllamaLLM(settings.ollama_url, settings.ollama_model, settings.ollama_timeout_s)
+    return OllamaLLM(
+        settings.ollama_url,
+        settings.ollama_model,
+        settings.ollama_timeout_s,
+        num_ctx=info.num_ctx,
+        think=info.think,
+    )
 
 
 def build_embedder(settings: Settings, device: str = "auto") -> Embedder:

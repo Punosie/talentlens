@@ -84,12 +84,16 @@ Then double-click **TalentLens** on your desktop (it's in the Start menu too). S
 
 ## Updating
 
+From version 0.2.0, TalentLens **updates itself with one click**. When a new version is published, a screen appears inside the app: click **Update now**, wait 1–5 minutes, and the page reloads on the new version. You have to update before you can keep working. If anything goes wrong, TalentLens goes back to the previous version by itself, and you can try again.
+
+Your library, saved lists and settings are kept. Your resume files are never touched.
+
+To update by hand instead (or once, to get from 0.1.x to 0.2.0, which added one-click updates):
+
 ```bash
 cd ~/TalentLens && git pull && bash scripts/macos/setup.sh     # Mac
 cd C:\dev\talentlens; git pull; powershell -ExecutionPolicy Bypass -File scripts\setup.ps1   # Windows
 ```
-
-Your library, saved lists and settings are kept. Your resume files are never touched.
 
 ## Uninstalling
 
@@ -217,6 +221,8 @@ npm run screenshots -- http://127.0.0.1:8797              # README screenshots f
 ```
 
 CI (`.github/workflows/ci.yml`) runs the backend and end-to-end suites on **Windows and macOS** for every push to `main`.
+
+**Releasing a version (this forces every user to update).** Raise the version in `pyproject.toml` and `backend/talentlens/__init__.py` (keep them equal; a test checks this), and in `frontend/package.json`. Then run `uv lock` and push to `main`. Within a few hours (or at the next start), every install sees the new version on GitHub and shows the **Update now** screen. Ordinary commits without a version bump don't prompt anyone. Set `TALENTLENS_UPDATE_CHECK=false` in `.env` to switch the check off on a development machine.
 
 ```
 backend/talentlens/   FastAPI app: parsing/, ai/ (rules, LLM, embeddings, reranker, taxonomy data),

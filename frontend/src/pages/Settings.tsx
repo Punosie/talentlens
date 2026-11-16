@@ -38,6 +38,60 @@ function applyTheme(t: Theme) {
   document.documentElement.classList.toggle('dark', dark)
 }
 
+type AiSettings = Awaited<ReturnType<typeof api.settings>>['ai']
+
+function isInstalled(installed: string[] | null | undefined, id: string) {
+  if (!installed) return null // Ollama not reachable: unknown
+  const tag = id.includes(':') ? id : `${id}:latest`
+  return installed.includes(id) || installed.includes(tag)
+}
+
+/** One dropdown for the local model, with what each choice means and whether it's downloaded. */
+function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string) => void; busy: boolean }) {
+  const current = ai.models.find((m) => m.id === ai.model)
+  const unknownCurrent = ai.model && !current
+  const installed = isInstalled(ai.installed, ai.model ?? '')
+  return (
+    <div className="mt-5">
+      <label htmlFor="ai-model" className="text-[13px] font-semibold">
+        Local AI model
+      </label>
+      <select
+        id="ai-model"
+        data-testid="ai-model-select"
+        className="mt-2 block w-full max-w-[420px] rounded-[10px] border border-line-strong bg-[var(--surface)] px-3 py-2 text-[14px] focus:border-ink focus:outline-none"
+        value={ai.model ?? ''}
+        disabled={busy}
+        onChange={(e) => onPick(e.target.value)}
+      >
+        {unknownCurrent && <option value={ai.model ?? ''}>{ai.model} (set in configuration)</option>}
+        {ai.models.map((m) => {
+          const have = isInstalled(ai.installed, m.id)
+          return (
+            <option key={m.id} value={m.id}>
+              {m.label}
+              {m.recommended ? ' · recommended' : ''}
+              {m.size_gb ? ` · ${m.size_gb} GB` : ''}
+              {have === false ? ' · not downloaded' : ''}
+            </option>
+          )
+        })}
+      </select>
+      {current && (
+        <p className="mt-2 max-w-[520px] text-[12.5px] text-muted" data-testid="ai-model-hint">
+          {current.hint}
+          {current.think ? ' It thinks before answering, so each reading takes longer but is more careful.' : ''}
+        </p>
+      )}
+      {installed === false && (
+        <p className="mt-2 text-[12.5px]" data-testid="ai-model-pull">
+          Not downloaded yet. In a terminal, run <code>ollama pull {ai.model}</code>, then come back.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const qc = useQueryClient()
   const toast = useToast()
@@ -152,34 +206,7 @@ export default function SettingsPage() {
                 </label>
                 <p className="mt-1 pl-7 text-[12.5px] text-muted">When off, everything still works using fast automatic reading.</p>
 
-                {d.ai.enabled && (
-                  <fieldset className="mt-5">
-                    <legend className="text-[13px] font-semibold">Quality</legend>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {d.ai.models.map((m) => (
-                        <label
-                          key={m.id}
-                          className={cn(
-                            'flex cursor-pointer flex-col gap-0.5 rounded-[10px] border p-3',
-                            d.ai.model === m.id ? 'border-ink bg-ink-soft/40' : 'border-line-strong hover:border-ink',
-                          )}
-                        >
-                          <span className="flex items-center gap-2 text-[14px] font-medium">
-                            <input
-                              type="radio"
-                              name="model"
-                              className="accent-[var(--ink)]"
-                              checked={d.ai.model === m.id}
-                              onChange={() => ai.mutate({ ollama_model: m.id })}
-                            />
-                            {m.label}
-                          </span>
-                          <span className="pl-6 text-[12.5px] text-muted">{m.hint}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                )}
+                {d.ai.enabled && <ModelPicker ai={d.ai} onPick={(id) => ai.mutate({ ollama_model: id })} busy={ai.isPending} />}
               </>
             )}
             {d.ai.locked && <p className="mt-3 text-[12.5px] text-muted">Set in the configuration file (.env).</p>}

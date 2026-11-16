@@ -9,11 +9,13 @@ import sys
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from .. import __version__
+from ..ai import models as local_models
 from ..library import FolderProblem, count_resumes, validate_folder
 from ..state import AppState
 from . import get_state
@@ -21,20 +23,18 @@ from . import get_state
 router = APIRouter(prefix="/api", tags=["settings"])
 State = Annotated[AppState, Depends(get_state)]
 
-# Measured with scripts/bench_ai.py: the 1.5B model is ~2x faster but clearly less accurate.
-AI_MODELS = [
-    {
-        "id": "qwen2.5:3b-instruct",
-        "label": "Best quality (recommended)",
-        "hint": "About 25 seconds per resume on a laptop without a strong graphics card",
-    },
-    {
-        "id": "qwen2.5:1.5b-instruct",
-        "label": "Fastest",
-        "hint": "About twice as fast but noticeably less accurate "
-        "(first run: ollama pull qwen2.5:1.5b-instruct)",
-    },
-]
+# Curated in talentlens/ai/models.py (sources and measurements are noted there).
+AI_MODELS = [m.as_dict() for m in local_models.MODELS]
+
+
+def _installed_models(base_url: str) -> list[str] | None:
+    """Tags already pulled into Ollama, or None when Ollama isn't reachable."""
+    try:
+        r = httpx.get(f"{base_url.rstrip('/')}/api/tags", timeout=2)
+        r.raise_for_status()
+        return [m.get("name") for m in r.json().get("models", []) if m.get("name")]
+    except (httpx.HTTPError, ValueError):
+        return None
 
 
 class SettingsUpdate(BaseModel):
@@ -73,6 +73,9 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "paused": bool(st.prefs.get("ai_paused")),
             "model": getattr(st.llm, "model", None),
             "models": AI_MODELS,
+            "installed": _installed_models(st.settings.ollama_url)
+            if st.settings.llm == "ollama"
+            else None,
             **st.llm.status(),
         },
         "device": {
