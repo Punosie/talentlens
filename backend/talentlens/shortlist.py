@@ -127,16 +127,23 @@ def experience_score(years: float | None, lo: float | None, hi: float | None) ->
     return 1.0
 
 
-def location_score(city: str | None, country: str | None, wanted: list[str]) -> float:
+def location_score(
+    city: str | None, country: str | None, wanted: list[str], full: str | None = None
+) -> float:
+    """1.0 in a wanted place (city, country, or a state/region in the full written location),
+    0.7 elsewhere in the same country, else 0."""
     if not wanted:
         return 1.0
+    if any(taxonomy.location_matches(x, city, country, full) for x in wanted):
+        return 1.0
     gz = taxonomy.gazetteer()
-    w = {x.lower() for x in wanted}
-    if city and city.lower() in w:
-        return 1.0
-    if country and country.lower() in w:
-        return 1.0
-    wanted_countries = {(gz.city_country.get(x) or x).lower() for x in wanted}
+    wanted_countries = set()
+    for x in wanted:
+        wanted_countries.add((gz.city_country.get(x) or x).lower())
+        if x.upper() in taxonomy.US_STATES or x.lower() in {
+            s.lower() for s in taxonomy.US_STATES.values()
+        }:
+            wanted_countries.add("united states")
     if country and country.lower() in wanted_countries:
         return 0.7
     return 0.0
@@ -166,12 +173,19 @@ class Shortlister:
         sources: list[str] | None = None,
         owners: list[str] | None = None,
         options: RankOptions = DEFAULT_OPTIONS,
+        filters: Filters | None = None,
     ) -> dict[str, Any]:
         """rerank=False: embeddings + skills only. rerank=True (what the UI uses) also re-scores the
         closest candidates with the cross-encoder, so the list is shown once, in its final order."""
         t0 = time.perf_counter()
         query = req.query_text() or jd_text[:1500]
-        scope_sql, scope_args = Filters(sources=sources or [], owners=owners or []).sql()
+        # who may be ranked at all: the user's filters (hard) plus the source/owner scope
+        scope = filters or Filters()
+        if sources:
+            scope.sources = list(sources)
+        if owners:
+            scope.owners = list(owners)
+        scope_sql, scope_args = scope.sql()
         with self.db.connect() as conn:
             rows = {
                 r["id"]: r
@@ -266,7 +280,9 @@ class Shortlister:
                 else 1.0,
                 "experience": experience_score(row["years_exp"], req.min_years, req.max_years),
                 "domain": domain_score(loads_list(row["domains"]), req.domains),
-                "location": location_score(row["city"], row["country"], req.locations),
+                "location": location_score(
+                    row["city"], row["country"], req.locations, row["location_full"]
+                ),
             }
             weights = dict(WEIGHTS)
             if options.role_weight:

@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from .ai import taxonomy
 from .ai.embed import Embedder
 from .db import Database
 from .serializers import SUMMARY_COLUMNS, cv_summary
@@ -58,12 +59,22 @@ class Filters:
             where.append("c.years_exp <= ?")
             args.append(self.years_max)
         if self.locations:
-            marks = ",".join("?" * len(self.locations))
-            where.append(
-                f"(c.city COLLATE NOCASE IN ({marks}) OR c.country COLLATE NOCASE IN ({marks}))"
-            )
-            args.extend(self.locations)
-            args.extend(self.locations)
+            # any of the values; each matches an exact city/country or the full written location
+            # (which keeps the state: "New Jersey", "NJ", "Karnataka", "Bay Area" all work)
+            ors: list[str] = []
+            for value in self.locations:
+                t = taxonomy.location_term(value)
+                if t.exact:
+                    marks = ",".join("?" * len(t.exact))
+                    ors.append(f"c.city COLLATE NOCASE IN ({marks})")
+                    ors.append(f"c.country COLLATE NOCASE IN ({marks})")
+                    args.extend(t.exact)
+                    args.extend(t.exact)
+                for p in t.patterns:
+                    ors.append("c.location_full LIKE ?")
+                    args.append(p)
+            if ors:
+                where.append("(" + " OR ".join(ors) + ")")
         if self.domains:
             marks = ",".join("?" * len(self.domains))
             where.append(
@@ -321,7 +332,22 @@ class SearchEngine:
                 "SELECT o.value AS v, COUNT(*) AS n FROM cvs c, json_each(c.owners) o "
                 "WHERE c.status='indexed' GROUP BY o.value ORDER BY n DESC LIMIT 50"
             ).fetchall()
+            us_locations = conn.execute(
+                "SELECT location_full FROM cvs WHERE status='indexed' "
+                "AND country='United States' AND location_full IS NOT NULL"
+            ).fetchall()
+        # US states, read from the full written location ("Jersey City, New Jersey, United States")
+        state_names = {s.lower(): s for s in taxonomy.US_STATES.values()}
+        state_counts: dict[str, int] = {}
+        for (loc,) in us_locations:
+            for part in str(loc).split(",")[:-1]:
+                name = state_names.get(part.strip().lower())
+                if name:
+                    state_counts[name] = state_counts.get(name, 0) + 1
+                    break
+        regions = sorted(state_counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return {
+            "regions": [{"value": v, "country": "United States", "count": n} for v, n in regions],
             "sources": [{"value": r["v"], "count": r["n"]} for r in sources],
             "owners": [{"value": r["v"], "count": r["n"]} for r in owners],
             "skills": [{"value": r["v"], "count": r["n"]} for r in skills],

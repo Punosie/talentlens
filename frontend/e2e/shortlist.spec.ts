@@ -40,6 +40,26 @@ test.describe('match to a job', () => {
     await expect(first).toContainText('Must-have skills')
   })
 
+  test('filter the ranked results by a typed location, then clear', async ({ page }) => {
+    await page.getByTestId('jd-text').fill(fs.readFileSync(sample('jd.txt'), 'utf8'))
+    await page.getByTestId('jd-submit').click()
+    await page.getByTestId('show-candidates').click()
+    await expect(page.getByTestId('shortlist-row').first()).toContainText('Alice Example')
+    const all = await page.getByTestId('shortlist-row').count()
+    expect(all).toBeGreaterThan(1)
+
+    const filters = page.getByTestId('result-filters')
+    await filters.getByTestId('result-location').getByRole('button', { name: 'Choose Location' }).click()
+    await page.getByLabel('Filter Location').fill('Riyadh, Saudi')
+    await page.getByRole('button', { name: 'Add “Riyadh, Saudi”' }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('shortlist-row')).toHaveCount(1)
+    await expect(page.getByTestId('shortlist-row').first()).toContainText('Carol Placeholder')
+
+    await page.getByTestId('clear-result-filters').click()
+    await expect(page.getByTestId('shortlist-row')).toHaveCount(all)
+  })
+
   test('uploading a JD file works too', async ({ page }) => {
     await page.getByTestId('jd-file').setInputFiles(sample('jd.txt'))
     await expect(page.getByText('jd.txt')).toBeVisible()

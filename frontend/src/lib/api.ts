@@ -48,6 +48,8 @@ export type Facets = {
   skills: Facet[]
   domains: Facet[]
   countries: Facet[]
+  /** US states (from the full written location) */
+  regions?: (Facet & { country: string | null })[]
   cities: (Facet & { country: string | null })[]
   years: { min: number | null; max: number | null; known: number; total: number; buckets: Record<string, number> }
 }
@@ -182,7 +184,17 @@ export type ConnectionsStatus = {
   error?: string | null
 }
 
-export type MatchScope = { sources?: ('file' | 'linkedin')[]; owners?: string[] }
+/** Hard filters on who is ranked after a JD match (the requirements still decide the order). */
+export type ResultFilters = {
+  locations: string[]
+  years_min: number | null
+  years_max: number | null
+  skills: string[]
+  skills_mode: 'all' | 'any'
+  domains: string[]
+}
+export const EMPTY_RESULT_FILTERS: ResultFilters = { locations: [], years_min: null, years_max: null, skills: [], skills_mode: 'all', domains: [] }
+export type MatchScope = { sources?: ('file' | 'linkedin')[]; owners?: string[]; filters?: ResultFilters }
 
 export type BulkResult = {
   filename: string

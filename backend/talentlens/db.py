@@ -105,7 +105,30 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("owners", "TEXT NOT NULL DEFAULT '[]'"),  # JSON: LinkedIn accounts this person is connected to
     ("profile_url", "TEXT"),  # LinkedIn profile URL
     ("mongo_pushed", "TEXT"),  # "<sha256>:<llm_sha>" last pushed to MongoDB (file rows)
+    # Full location as written ("Jersey City, New Jersey, United States"): keeps the state,
+    # which city/country drop. Derived by triggers below, so it never needs separate upkeep.
+    ("location_full", "TEXT"),
 ]
+
+# The profile's own "Location: ..." line (LinkedIn profiles and many resumes start with one),
+# else the extracted location. Pure SQL so triggers can keep it current.
+_HEAD = "substr(NEW.text, 1, 600)"
+_AT = f"instr({_HEAD}, 'Location: ')"
+_REST = f"substr({_HEAD}, {_AT} + 10)"
+_LINE_END = f"instr({_REST}, char(10))"
+LOCATION_FULL_EXPR = (
+    f"CASE WHEN NEW.text IS NOT NULL AND {_AT} > 0 "
+    f"THEN trim(substr({_REST}, 1, CASE WHEN {_LINE_END} > 0 THEN {_LINE_END} - 1 ELSE 200 END), "
+    f"' ' || char(13)) ELSE NEW.location END"
+)
+LOCATION_TRIGGERS = f"""
+CREATE TRIGGER IF NOT EXISTS tr_cvs_location_full_ins AFTER INSERT ON cvs BEGIN
+  UPDATE cvs SET location_full = {LOCATION_FULL_EXPR} WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_cvs_location_full_upd AFTER UPDATE OF text, location ON cvs BEGIN
+  UPDATE cvs SET location_full = {LOCATION_FULL_EXPR} WHERE id = NEW.id;
+END;
+"""
 
 
 class Database:
@@ -126,6 +149,13 @@ class Database:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS ix_cvs_source ON cvs(source)")
             conn.execute("CREATE INDEX IF NOT EXISTS ix_cvs_person ON cvs(person_id)")
+            conn.executescript(LOCATION_TRIGGERS)
+            # one-time fill for rows that existed before the column (cheap no-op afterwards)
+            conn.execute(
+                f"UPDATE cvs SET location_full = "
+                f"{LOCATION_FULL_EXPR.replace('NEW.', '')} "
+                f"WHERE location_full IS NULL AND (text IS NOT NULL OR location IS NOT NULL)"
+            )
             conn.execute(
                 "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",

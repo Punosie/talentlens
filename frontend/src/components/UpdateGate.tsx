@@ -21,13 +21,15 @@ export function UpdateGate() {
   const [phase, setPhase] = useState<Phase>(() => (readFrom() ? 'updating' : 'idle'))
   const [error, setError] = useState<string | null>(null)
   const [slow, setSlow] = useState(false)
-  const startedAt = useRef<number>(Date.now())
+  const startedAt = useRef<number>(0)
   const u = q.data
+  const current = u?.current
 
   // While updating: the server goes away and comes back; reload once it runs a newer version
   useEffect(() => {
     if (phase !== 'updating') return
-    const from = readFrom() ?? u?.current ?? ''
+    if (!startedAt.current) startedAt.current = Date.now()
+    const from = readFrom() ?? current ?? ''
     let stop = false
     const tick = async () => {
       try {
@@ -58,7 +60,7 @@ export function UpdateGate() {
       stop = true
       window.clearTimeout(t)
     }
-  }, [phase, u?.current])
+  }, [phase, current])
 
   const begin = async () => {
     setError(null)
