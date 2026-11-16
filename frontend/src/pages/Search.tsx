@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { CandidateProfile, SourceBadges } from '../components/CandidateProfile'
 import { FacetPicker } from '../components/FacetPicker'
+import { locationOptions as locationOptionsFor } from '../lib/locations'
 import { Avatar, Button, Chip, Empty, HelpDot, Input, Kbd, Label, Skeleton } from '../components/ui'
 import { api, type CVSummary, type SearchParams } from '../lib/api'
 import { cn, displayName, snippetParts, years } from '../lib/utils'
@@ -125,14 +126,7 @@ export default function SearchPage() {
         ? `${params.years_min}+ yrs`
         : `Up to ${params.years_max} yrs`
 
-  const locationOptions = useMemo(() => {
-    const f = facets.data
-    if (!f) return []
-    return [
-      ...f.countries.map((c) => ({ value: c.value, count: c.count, hint: 'country' })),
-      ...f.cities.map((c) => ({ value: c.value, count: c.count, hint: c.country })),
-    ]
-  }, [facets.data])
+  const locationOptions = useMemo(() => locationOptionsFor(facets.data), [facets.data])
 
   const clearAll = () => update((n) => ['skill', 'mode', 'ymin', 'ymax', 'loc', 'dom'].forEach((k) => n.delete(k)))
 
@@ -250,7 +244,7 @@ export default function SearchPage() {
 
       <div>
         <Label>Location</Label>
-        <FacetPicker label="Location" testId="filter-location" options={locationOptions} selected={params.location!} onChange={(v) => setList('loc', v)} placeholder="Country or city…" />
+        <FacetPicker label="Location" testId="filter-location" options={locationOptions} selected={params.location!} onChange={(v) => setList('loc', v)} placeholder="Country, state or city…" allowCustom />
       </div>
 
       <div>

@@ -39,6 +39,7 @@ class Requirements:
     domains: list[str] = field(default_factory=list)
     summary: str | None = None
     source: str = "rules"  # rules | llm
+    role_family: str | None = None  # what the job really is (can differ from a misleading title)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -51,6 +52,7 @@ class Requirements:
     def query_text(self) -> str:
         """Compact text used for embedding / reranking against resumes."""
         parts = [
+            self.role_family or "",
             self.title or "",
             f"{self.min_years:g}+ years experience" if self.min_years else "",
             ("Required: " + ", ".join(self.must_have_skills)) if self.must_have_skills else "",
@@ -169,14 +171,78 @@ JD_SYSTEM = (
 )
 
 
-def parse_llm(llm: LLM, text: str, fallback: Requirements | None = None) -> Requirements:
+_UPPER_YEARS = re.compile(
+    r"(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)"
+    r"|(?:not|no)\s+(?:more|over)\s+(?:than\s+)?(\d{1,2})\s*(?:years?|yrs?)"
+    r"|(?:up to|maximum(?: of)?|max\.?|at most)\s*(\d{1,2})\s*(?:years?|yrs?)"
+    r"|more than\s+(\d{1,2})\s*(?:years?|yrs?)\s+of\s+experience\s+(?:will not|won't)",
+    re.I,
+)
+
+
+def stated_max_years(text: str) -> float | None:
+    """An upper experience bound the JD actually states, or None."""
+    for m in _UPPER_YEARS.finditer(text[:MAX_JD_CHARS]):
+        if m.group(1) and m.group(2):
+            lo, hi = float(m.group(1)), float(m.group(2))
+            if 0 < lo <= hi <= 45:
+                return hi
+        for g in (m.group(3), m.group(4), m.group(5)):
+            if g and 0 < float(g) <= 45:
+                return float(g)
+    return None
+
+
+def normalize_location(raw: str) -> str | None:
+    """Free text ("Pune, India", "UAE", "New York metro area") -> canonical city, else country.
+    Unknown places are kept as written; 'remote' / 'anywhere' are dropped."""
+    s = raw.strip()
+    if not s or re.search(r"\b(remote|anywhere|global|worldwide)\b", s, re.I):
+        return None
+    gz = taxonomy.gazetteer()
+    cities = gz.find_cities(s)
+    if cities:
+        return cities[0][1]
+    country = gz.country_alias.get(re.sub(r"\s+", " ", s.lower()).strip(" ."))
+    if country:
+        return country
+    countries = gz.find_countries(s)
+    if countries:
+        return countries[0][1]
+    return s.split(",")[0].strip().title() or None
+
+
+def parse_llm(
+    llm: LLM,
+    text: str,
+    fallback: Requirements | None = None,
+    *,
+    max_tokens: int = 400,
+    system: str | None = None,
+    schema: dict[str, Any] | None = None,
+    max_years_only_if_stated: bool = False,
+) -> Requirements:
     base = fallback or parse_rules(text)
     data = llm.json_chat(
-        JD_SYSTEM,
+        system or JD_SYSTEM,
         f"Job description:\n<<<\n{text[:MAX_JD_CHARS]}\n>>>",
-        JD_SCHEMA,
-        max_tokens=400,
+        schema or JD_SCHEMA,
+        max_tokens=max_tokens,
     )
+    return requirements_from_llm(
+        data, text, base, max_years_only_if_stated=max_years_only_if_stated
+    )
+
+
+def requirements_from_llm(
+    data: dict[str, Any],
+    text: str,
+    base: Requirements,
+    *,
+    max_years_only_if_stated: bool = False,
+) -> Requirements:
+    """Normalise an LLM's JSON (old city/country schema or the newer locations list) into
+    canonical Requirements."""
     tax = taxonomy.skills()
     dm = taxonomy.domains()
     gz = taxonomy.gazetteer()
@@ -206,11 +272,21 @@ def parse_llm(llm: LLM, text: str, fallback: Requirements | None = None) -> Requ
     lo, hi = num(data.get("min_years")), num(data.get("max_years"))
     if lo is None:
         lo, hi = base.min_years, base.max_years if hi is None else hi
+    if max_years_only_if_stated:
+        hi = stated_max_years(text)  # an upper bound only when the JD actually states one
     if lo is not None and hi is not None and hi < lo:
         hi = None
 
-    city, country = gz.normalize(_s(data.get("city")), _s(data.get("country")))
-    locations = [x for x in (city,) if x] or ([country] if country else []) or base.locations
+    if isinstance(data.get("locations"), list):
+        locations = []
+        for raw in _str_list(data.get("locations")):
+            val = normalize_location(raw)
+            if val and val not in locations:
+                locations.append(val)
+        locations = locations or base.locations
+    else:
+        city, country = gz.normalize(_s(data.get("city")), _s(data.get("country")))
+        locations = [x for x in (city,) if x] or ([country] if country else []) or base.locations
 
     domains: list[str] = []
     for raw in _str_list(data.get("domains")):
@@ -228,4 +304,5 @@ def parse_llm(llm: LLM, text: str, fallback: Requirements | None = None) -> Requ
         domains=domains or base.domains,
         summary=_s(data.get("summary")),
         source="llm",
+        role_family=_s(data.get("role_family")) or None,
     )

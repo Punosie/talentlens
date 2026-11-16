@@ -337,3 +337,106 @@ def gazetteer() -> Gazetteer:
         _compile(short_country, 0),
         tuple(countries),
     )
+
+
+# --- free-text location filters ("New Jersey", "NJ", "Bay Area", "Karnataka") ---------------
+US_STATES: dict[str, str] = {
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming",
+    "DC": "District of Columbia",
+}
+_STATE_BY_NAME = {v.lower(): k for k, v in US_STATES.items()}
+
+
+@dataclass(frozen=True)
+class LocationTerm:
+    """How one location filter value matches a CV: exact city/country names, or text patterns
+    (SQL LIKE, case-insensitive) on the full written location, which keeps the state/region."""
+
+    exact: tuple[str, ...]
+    patterns: tuple[str, ...]
+
+
+def location_term(value: str) -> LocationTerm:
+    raw = " ".join(value.split()).strip(" ,.")
+    if not raw:
+        return LocationTerm((), ())
+    gz = gazetteer()
+    exact = {raw}
+    key = _norm_key(raw)
+    if key in gz.city_alias:
+        exact.add(gz.city_alias[key])
+    if key in gz.country_alias:
+        exact.add(gz.country_alias[key])
+    patterns: set[str] = set()
+    abbr = raw.upper() if raw.upper() in US_STATES else _STATE_BY_NAME.get(raw.lower())
+    if abbr:  # "NJ" or "New Jersey": the state's name or its abbreviation in a written location
+        name = US_STATES[abbr]
+        patterns |= {f"%{name}%", f"%, {abbr},%", f"%, {abbr}"}
+    if len(raw) >= 3:
+        patterns.add(f"%{raw}%")
+    return LocationTerm(tuple(sorted(exact)), tuple(sorted(patterns)))
+
+
+def location_matches(value: str, city: str | None, country: str | None, full: str | None) -> bool:
+    """Python twin of the SQL filter (search.Filters), used for match scoring."""
+    t = location_term(value)
+    lower_exact = {e.lower() for e in t.exact}
+    if (city and city.lower() in lower_exact) or (country and country.lower() in lower_exact):
+        return True
+    text = (full or "").lower()
+    for p in t.patterns:
+        core = p.strip("%").lower()
+        if p.endswith("%") and core in text:
+            return True
+        if not p.endswith("%") and text.endswith(core):
+            return True
+    return False

@@ -62,3 +62,7 @@ desktop.ini
 
 # --- Claude Code local settings ----------------------------------------------
 .claude/settings.local.json
+
+# --- Local-AI benchmark work: real names, profile cards, client JDs, gold sets,
+# training data and model results. NEVER commit (see scripts/bench/README.md) ----
+/bench-work/

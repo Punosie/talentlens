@@ -182,10 +182,59 @@ def test_ai_toggle_and_model(tmp_path: Path, no_discovery: None) -> None:
         off = c.put("/api/settings", json={"ai_enabled": False}).json()
         assert off["ai"]["mode"] == "off" and off["ai"]["enabled"] is False
         on = c.put(
-            "/api/settings", json={"ai_enabled": True, "ollama_model": "qwen2.5:1.5b-instruct"}
+            "/api/settings", json={"ai_enabled": True, "ollama_model": "qwen3.5:4b-q4_K_M"}
         ).json()
-        assert on["ai"]["mode"] == "ollama" and on["ai"]["model"] == "qwen2.5:1.5b-instruct"
+        assert on["ai"]["mode"] == "ollama" and on["ai"]["model"] == "qwen3.5:4b-q4_K_M"
+        # the dropdown's catalog: one recommended entry; Ollama unreachable -> installed unknown
+        ids = [m["id"] for m in on["ai"]["models"]]
+        assert "qwen3.5:4b-q4_K_M" in ids and "qwen2.5:3b-instruct" in ids
+        assert sum(m["recommended"] for m in on["ai"]["models"]) == 1
+        assert on["ai"]["installed"] is None
         assert c.put("/api/settings", json={"ollama_model": "evil"}).status_code == 400
+        # the retired 1.5B model is no longer offered
+        assert (
+            c.put("/api/settings", json={"ollama_model": "qwen2.5:1.5b-instruct"}).status_code
+            == 400
+        )
+
+
+def test_catalog_models_get_their_own_llm_settings() -> None:
+    from talentlens.ai import build_llm
+    from talentlens.ai.models import MODELS
+
+    for m in MODELS:
+        llm = build_llm(Settings(llm="ollama", ollama_model=m.id, _env_file=None))
+        assert llm.model == m.id and llm.num_ctx == m.num_ctx and llm.think == m.think
+    # a model set by hand in .env keeps the old defaults
+    other = build_llm(Settings(llm="ollama", ollama_model="llama3.1:8b", _env_file=None))
+    assert other.think is None and other.num_ctx == 2048
+
+
+def test_thinking_models_send_think_and_a_bigger_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from talentlens.ai.llm import OllamaLLM
+
+    sent: list[dict] = []
+
+    class Resp:
+        def raise_for_status(self) -> None: ...
+
+        def json(self) -> dict:
+            return {"message": {"content": '{"ok": true}', "thinking": "..."}}
+
+    def fake_post(url: str, json: dict, timeout: float) -> Resp:
+        sent.append(json)
+        return Resp()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    thinking = OllamaLLM("http://x", "qwen3.5:4b-q4_K_M", num_ctx=8192, think=True)
+    assert thinking.json_chat("s", "u", {"type": "object"}, max_tokens=400) == {"ok": True}
+    plain = OllamaLLM("http://x", "gemma4:e4b-it-q4_K_M", think=None)
+    plain.json_chat("s", "u", {"type": "object"}, max_tokens=400)
+    assert sent[0]["think"] is True
+    assert sent[0]["options"]["num_predict"] == 400 + OllamaLLM.THINK_BUDGET
+    assert "think" not in sent[1] and sent[1]["options"]["num_predict"] == 400
 
 
 def test_app_never_creates_env_file(tmp_path: Path, no_discovery: None) -> None:

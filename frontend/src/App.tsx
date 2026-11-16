@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { Onboarding } from './components/Onboarding'
 import { StatusPill } from './components/StatusPill'
+import { UpdateGate } from './components/UpdateGate'
 import { Hint } from './components/ui'
 import { useIndexStatus } from './hooks/useIndexStatus'
 import { api } from './lib/api'
@@ -139,6 +140,7 @@ export default function App() {
         status={status}
         firstRun={firstRun}
       />
+      <UpdateGate />
     </div>
   )
 }

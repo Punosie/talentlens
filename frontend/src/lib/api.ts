@@ -48,6 +48,8 @@ export type Facets = {
   skills: Facet[]
   domains: Facet[]
   countries: Facet[]
+  /** US states (from the full written location) */
+  regions?: (Facet & { country: string | null })[]
   cities: (Facet & { country: string | null })[]
   years: { min: number | null; max: number | null; known: number; total: number; buckets: Record<string, number> }
 }
@@ -151,7 +153,9 @@ export type AppSettings = {
     locked: boolean
     paused: boolean
     model: string | null
-    models: { id: string; label: string; hint: string }[]
+    models: { id: string; label: string; hint: string; size_gb?: number; think?: boolean | null; recommended?: boolean }[]
+    /** Tags already pulled into Ollama; null when Ollama isn't reachable */
+    installed?: string[] | null
     mode: string
     available: boolean
     error: string | null
@@ -180,7 +184,17 @@ export type ConnectionsStatus = {
   error?: string | null
 }
 
-export type MatchScope = { sources?: ('file' | 'linkedin')[]; owners?: string[] }
+/** Hard filters on who is ranked after a JD match (the requirements still decide the order). */
+export type ResultFilters = {
+  locations: string[]
+  years_min: number | null
+  years_max: number | null
+  skills: string[]
+  skills_mode: 'all' | 'any'
+  domains: string[]
+}
+export const EMPTY_RESULT_FILTERS: ResultFilters = { locations: [], years_min: null, years_max: null, skills: [], skills_mode: 'all', domains: [] }
+export type MatchScope = { sources?: ('file' | 'linkedin')[]; owners?: string[]; filters?: ResultFilters }
 
 export type BulkResult = {
   filename: string
@@ -260,8 +274,21 @@ const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 })
 
+export type UpdateStatus = {
+  current: string
+  latest: string | null
+  update_required: boolean
+  checked_at: string | null
+  error: string | null
+  can_update: boolean
+  /** Written by the updater script: starting | updating | done | failed */
+  last_run: { state: string; message?: string; from?: string; to?: string; at?: string } | null
+}
+
 export const api = {
   health: () => request<Health>('/api/health'),
+  updateStatus: (refresh = false) => request<UpdateStatus>(`/api/update${qs({ refresh: refresh || undefined })}`),
+  startUpdate: () => request<UpdateStatus & { started: boolean }>('/api/update', { method: 'POST' }),
   status: () => request<IndexStatus>('/api/index/status'),
   refresh: (full = false) => request<IndexStatus>(`/api/index/refresh${qs({ full })}`, { method: 'POST' }),
   setAiPaused: (paused: boolean) => request<IndexStatus>(`/api/index/ai${qs({ paused })}`, { method: 'POST' }),

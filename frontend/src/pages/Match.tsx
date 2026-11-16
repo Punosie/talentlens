@@ -6,7 +6,8 @@ import { CandidateProfile, SourceBadges } from '../components/CandidateProfile'
 import { FacetPicker } from '../components/FacetPicker'
 import { SEGMENTS, ScoreBar } from '../components/ScoreBar'
 import { Avatar, Button, Card, Chip, ConfirmDialog, Empty, HelpDot, Input, Label, Modal, Skeleton, Spinner, Textarea, useToast } from '../components/ui'
-import { api, type RankedCV, type Requirements, type ShortlistResult } from '../lib/api'
+import { api, EMPTY_RESULT_FILTERS, type RankedCV, type Requirements, type ResultFilters, type ShortlistResult } from '../lib/api'
+import { locationOptions as locationOptionsFor } from '../lib/locations'
 import { cn, displayName, downloadBlob, matchLabel, matchReason } from '../lib/utils'
 
 type Step = 0 | 1 | 2
@@ -89,9 +90,12 @@ export default function MatchPage() {
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets })
   const llmOk = !!health.data?.llm.available
   const hasLinkedIn = (facets.data?.sources ?? []).some((s) => s.value === 'linkedin' && s.count > 0)
-  const [pool, setPool] = useState<'' | 'file' | 'linkedin'>('')
-  const [via, setVia] = useState<string[]>([])
-  const scope = { sources: pool ? [pool] : [], owners: pool === 'file' ? [] : via }
+  const [pool, setPool] = useSessionState<'' | 'file' | 'linkedin'>('m-pool', '')
+  const [via, setVia] = useSessionState<string[]>('m-via', [])
+  const [rf, setRf] = useSessionState<ResultFilters>('m-filters', EMPTY_RESULT_FILTERS)
+  const filtersOn =
+    !!pool || via.length > 0 || rf.locations.length > 0 || rf.skills.length > 0 || rf.domains.length > 0 || rf.years_min !== null || rf.years_max !== null
+  const scope = { sources: pool ? [pool] : [], owners: pool === 'file' ? [] : via, filters: rf }
 
   // --- ranking: one request, shown once in its final order -----------------------
   const rank = useMutation({
@@ -105,6 +109,23 @@ export default function MatchPage() {
     onError: (e: Error) => toast(e.message, 'error'),
   })
   const [confirmNew, setConfirmNew] = useState(false)
+
+  // On the results, changing a filter re-ranks within the filtered pool (debounced for typing)
+  const filterKey = JSON.stringify([pool, via, rf])
+  const lastKey = useRef(filterKey)
+  useEffect(() => {
+    if (step !== 2 || !req || lastKey.current === filterKey) return
+    lastKey.current = filterKey
+    const t = window.setTimeout(() => rank.mutate({ r: req, jd: jdText }), 350)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey, step])
+  const setFilters = (patch: Partial<ResultFilters>) => setRf((f) => ({ ...f, ...patch }))
+  const clearFilters = () => {
+    setPool('')
+    setVia([])
+    setRf(EMPTY_RESULT_FILTERS)
+  }
 
   // One request does the whole reading on the server: rules first, then smart reading (local AI)
   // improves them. Requirements appear only when both are done, so nothing changes afterwards.
@@ -131,6 +152,7 @@ export default function MatchPage() {
 
   const showCandidates = () => {
     if (!req) return
+    lastKey.current = filterKey
     setStep(2)
     rank.mutate({ r: req, jd: jdText })
   }
@@ -184,10 +206,7 @@ export default function MatchPage() {
   const newJob = () => (result?.items.length ? setConfirmNew(true) : reset())
 
   const skillOptions = facets.data?.skills ?? []
-  const locationOptions = [
-    ...(facets.data?.countries ?? []).map((c) => ({ value: c.value, count: c.count, hint: 'country' })),
-    ...(facets.data?.cities ?? []).map((c) => ({ value: c.value, count: c.count, hint: c.country })),
-  ]
+  const locationOptions = locationOptionsFor(facets.data)
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 md:px-8 md:py-8">
@@ -259,7 +278,7 @@ export default function MatchPage() {
                 <Input type="number" min={0} max={50} placeholder="Max" aria-label="Maximum years" className="h-9" value={req.max_years ?? ''} onChange={(e) => edit({ max_years: e.target.value === '' ? null : Number(e.target.value) })} />
               </div>
             </Group>
-            <Group label="Location" hint="City or country. Leave empty for anywhere.">
+            <Group label="Location" hint="City, state or country. Leave empty for anywhere.">
               <FacetPicker label="Location" testId="req-location" options={locationOptions} selected={req.locations} onChange={(v) => edit({ locations: v })} allowCustom />
             </Group>
             <Group label="Industry" hint="Experience in this industry scores higher.">
@@ -332,6 +351,22 @@ export default function MatchPage() {
               <Pencil className="size-4" /> Edit requirements
             </Button>
           </Card>
+
+          <ResultFilterBar
+            hasLinkedIn={hasLinkedIn}
+            pool={pool}
+            setPool={setPool}
+            via={via}
+            setVia={setVia}
+            owners={facets.data?.owners ?? []}
+            rf={rf}
+            setFilters={setFilters}
+            filtersOn={filtersOn}
+            clearFilters={clearFilters}
+            skillOptions={skillOptions}
+            locationOptions={locationOptions}
+            domainOptions={facets.data?.domains ?? []}
+          />
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="inline-flex items-center gap-2 text-[14px] font-medium" data-testid="shortlist-count" aria-live="polite">
@@ -542,6 +577,118 @@ function JdInput({ text, onText, file, onFile }: { text: string; onText: (t: str
           }}
         />
       </div>
+    </div>
+  )
+}
+
+type Opt = { value: string; count?: number; hint?: string | null }
+
+/** Filters on the ranked list: who is in the pool (resumes, LinkedIn, both), where, how senior. */
+function ResultFilterBar({
+  hasLinkedIn,
+  pool,
+  setPool,
+  via,
+  setVia,
+  owners,
+  rf,
+  setFilters,
+  filtersOn,
+  clearFilters,
+  skillOptions,
+  locationOptions,
+  domainOptions,
+}: {
+  hasLinkedIn: boolean
+  pool: '' | 'file' | 'linkedin'
+  setPool: (p: '' | 'file' | 'linkedin') => void
+  via: string[]
+  setVia: (v: string[]) => void
+  owners: Opt[]
+  rf: ResultFilters
+  setFilters: (p: Partial<ResultFilters>) => void
+  filtersOn: boolean
+  clearFilters: () => void
+  skillOptions: Opt[]
+  locationOptions: Opt[]
+  domainOptions: Opt[]
+}) {
+  const num = (v: string) => (v === '' ? null : Math.max(0, Number(v)))
+  return (
+    <div className="mt-4" data-testid="result-filters">
+    <Card className="p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-[13px] font-semibold">Filter the results</p>
+        {filtersOn && (
+          <button type="button" className="text-[12.5px] font-medium text-ink hover:underline" onClick={clearFilters} data-testid="clear-result-filters">
+            Clear filters
+          </button>
+        )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {hasLinkedIn && (
+          <div>
+            <Label>Search in</Label>
+            <div className="flex rounded-md border border-line p-0.5 text-[13px]" role="group" aria-label="Results from">
+              {(
+                [
+                  ['', 'Both'],
+                  ['file', 'Resumes'],
+                  ['linkedin', 'LinkedIn'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v || 'all'}
+                  type="button"
+                  aria-pressed={pool === v}
+                  data-testid={`result-pool-${v || 'all'}`}
+                  onClick={() => setPool(v)}
+                  className={cn('flex-1 rounded px-2 py-1', pool === v ? 'bg-ink text-on-ink' : 'text-muted hover:text-text')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {pool !== 'file' && owners.length > 1 && (
+              <div className="mt-2">
+                <FacetPicker label="Connected via" testId="result-owner" options={owners} selected={via} onChange={setVia} placeholder="Any LinkedIn account…" />
+              </div>
+            )}
+          </div>
+        )}
+        <div>
+          <Label>Location</Label>
+          <FacetPicker label="Location" testId="result-location" options={locationOptions} selected={rf.locations} onChange={(v) => setFilters({ locations: v })} placeholder="Country, state or city…" allowCustom />
+        </div>
+        <div>
+          <Label>Years of experience</Label>
+          <div className="flex items-center gap-2">
+            <Input type="number" min={0} max={60} placeholder="Min" aria-label="Filter minimum years" className="h-9" value={rf.years_min ?? ''} onChange={(e) => setFilters({ years_min: num(e.target.value) })} />
+            <span className="text-muted">to</span>
+            <Input type="number" min={0} max={60} placeholder="Max" aria-label="Filter maximum years" className="h-9" value={rf.years_max ?? ''} onChange={(e) => setFilters({ years_max: num(e.target.value) })} />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <Label>Has skills</Label>
+            {rf.skills.length > 1 && (
+              <div className="flex rounded-md border border-line text-[11.5px]" role="group" aria-label="Skills must match">
+                {(['all', 'any'] as const).map((m) => (
+                  <button key={m} type="button" aria-pressed={rf.skills_mode === m} onClick={() => setFilters({ skills_mode: m })} className={cn('px-2 py-0.5', rf.skills_mode === m ? 'bg-ink text-on-ink' : 'text-muted')}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <FacetPicker label="Skills" testId="result-skills" options={skillOptions} selected={rf.skills} onChange={(v) => setFilters({ skills: v })} />
+        </div>
+        <div>
+          <Label>Industry</Label>
+          <FacetPicker label="Industry" testId="result-domain" options={domainOptions} selected={rf.domains} onChange={(v) => setFilters({ domains: v })} />
+        </div>
+      </div>
+    </Card>
     </div>
   )
 }

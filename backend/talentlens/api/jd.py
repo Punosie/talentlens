@@ -17,6 +17,7 @@ from ..ai.llm import LLMUnavailable
 from ..config import JD_EXTENSIONS
 from ..jd import Requirements, parse_llm, parse_rules
 from ..parsing import ParseError, parse_bytes
+from ..search import Filters
 from ..shortlist import Shortlister, explain_stream
 from ..state import AppState
 from ..storage import safe_filename, sniff_matches
@@ -43,6 +44,27 @@ class RequirementsModel(BaseModel):
         return Requirements.from_dict(self.model_dump())
 
 
+class ResultFilters(BaseModel):
+    """Hard filters on who is ranked (the requirements still decide the order)."""
+
+    locations: list[str] = Field(default_factory=list, max_length=20)
+    years_min: float | None = Field(default=None, ge=0, le=60)
+    years_max: float | None = Field(default=None, ge=0, le=60)
+    skills: list[str] = Field(default_factory=list, max_length=30)
+    skills_mode: Literal["all", "any"] = "all"
+    domains: list[str] = Field(default_factory=list, max_length=20)
+
+    def to_filters(self) -> Filters:
+        return Filters(
+            skills=self.skills,
+            skills_mode=self.skills_mode,
+            years_min=self.years_min,
+            years_max=self.years_max,
+            locations=self.locations,
+            domains=self.domains,
+        )
+
+
 class ShortlistRequest(BaseModel):
     requirements: RequirementsModel
     jd_text: str = Field(default="", max_length=MAX_JD_TEXT)
@@ -50,6 +72,7 @@ class ShortlistRequest(BaseModel):
     rerank: bool = True
     sources: list[Literal["file", "linkedin"]] = Field(default_factory=list)
     owners: list[str] = Field(default_factory=list, max_length=20)
+    filters: ResultFilters | None = None
 
 
 class ExplainRequest(BaseModel):
@@ -136,6 +159,7 @@ async def shortlist(st: State, body: ShortlistRequest) -> dict[str, Any]:
         rerank=body.rerank,
         sources=body.sources,
         owners=body.owners,
+        filters=body.filters.to_filters() if body.filters else None,
     )
     # let background smart reading improve the people the user is looking at, first
     st.indexer.prioritize([i["id"] for i in result["items"][:20]])

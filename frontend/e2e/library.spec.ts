@@ -98,6 +98,15 @@ test.describe('search resumes', () => {
     await expect(rowNamed(page, 'Bob Sample')).toBeVisible()
   })
 
+  test('a location that is not in the list can be typed in (e.g. a state or region)', async ({ page }) => {
+    await page.getByTestId('filter-location').getByRole('button', { name: 'Choose Location' }).click()
+    await page.getByLabel('Filter Location').fill('Riyadh, Saudi')
+    await page.getByRole('button', { name: 'Add “Riyadh, Saudi”' }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('result-row')).toHaveCount(1)
+    await expect(rowNamed(page, 'Carol Placeholder')).toBeVisible()
+  })
+
   test('sorting by experience', async ({ page }) => {
     await page.getByTestId('sort-select').selectOption('experience')
     await expect(page.getByTestId('result-row').first()).toContainText('Bob Sample')

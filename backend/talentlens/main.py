@@ -25,6 +25,7 @@ from .config import REPO_ROOT, Settings, get_settings
 from .enrich import Enricher
 from .library import FolderProblem
 from .state import AppState, NoLibrary
+from .updates import Updater
 
 log = logging.getLogger("talentlens")
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state: AppState = app.state.tl
         state.start()
+        app.state.updater.start()
         log.info(
             "TalentLens %s started; resume folder=%s (%s)",
             __version__,
@@ -61,6 +63,7 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
         try:
             yield
         finally:
+            app.state.updater.stop()
             state.stop()
 
     app = FastAPI(
@@ -71,6 +74,7 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
         openapi_url="/api/openapi.json",
     )
     app.state.tl = AppState.build(settings, enricher)
+    app.state.updater = Updater(settings)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.exception_handler(NoLibrary)
@@ -94,6 +98,24 @@ def create_app(settings: Settings | None = None, enricher: Enricher | None = Non
             "llm": st.llm.status(),
             "embed_model": st.embedder.model_name,
         }
+
+    @app.get("/api/update", tags=["meta"])
+    def update_status(refresh: bool = False) -> dict[str, Any]:
+        """Is a newer version on GitHub? refresh=true checks now instead of using the last check."""
+        up: Updater = app.state.updater
+        if refresh and settings.update_check:
+            up.check()
+        return up.snapshot()
+
+    @app.post("/api/update", tags=["meta"])
+    def start_update() -> dict[str, Any]:
+        """One click: start the updater. The server stops, updates itself and comes back."""
+        up: Updater = app.state.updater
+        try:
+            up.launch()
+        except RuntimeError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"started": True, **up.snapshot()}
 
     app.include_router(cvs_api.router)
     app.include_router(index_api.router)
