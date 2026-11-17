@@ -99,12 +99,18 @@ Ok 'UI built (frontend\dist)'
 
 # --- 5. local AI models -------------------------------------------------------------
 if (-not $NoAI) {
-    Step "Downloading the local LLM ($Model, about 2 GB, first time only)"
+    # the model that suits this computer's graphics memory (falls back to the default above)
+    try {
+        $picked = (& { $ErrorActionPreference = 'Continue'; uv run --frozen talentlens recommend-model 2>$null } | Select-Object -Last 1)
+        if ($LASTEXITCODE -eq 0 -and $picked) { $Model = "$picked".Trim() }
+    } catch { }
+    Step "Downloading the local LLM ($Model, 1-3 GB, first time only)"
     try { Invoke-RestMethod 'http://127.0.0.1:11434/api/version' -TimeoutSec 2 | Out-Null } catch {
         Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -WindowStyle Hidden
         Start-Sleep -Seconds 4
     }
     Invoke-Native 'ollama pull' { & $ollamaExe pull $Model }
+    Invoke-Native 'set-model' { uv run --frozen talentlens set-model $Model }
     Ok "$Model ready"
 }
 Step 'Measuring CPU vs GPU speed (picks the faster for this computer)'

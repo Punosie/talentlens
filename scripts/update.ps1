@@ -59,6 +59,11 @@ try {
     Set-Status 'updating' 'Installing components'
     Run 'uv sync' { uv sync --frozen }
 
+    # Installs updated in-app never ran the install-time CPU/GPU test; without it an older NVIDIA
+    # card would be treated as usable. Measures only when needed; a failure never stops the update.
+    Set-Status 'updating' 'Checking CPU and GPU speed'
+    try { uv run --frozen talentlens benchmark --if-needed } catch { Write-Host "Benchmark skipped: $($_.Exception.Message)" }
+
     Set-Status 'updating' 'Building the screens'
     Push-Location (Join-Path $Root 'frontend')
     try {

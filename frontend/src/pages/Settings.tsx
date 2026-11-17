@@ -46,11 +46,17 @@ function isInstalled(installed: string[] | null | undefined, id: string) {
   return installed.includes(id) || installed.includes(tag)
 }
 
+function gpuText(hw: AiSettings['hardware']) {
+  if (!hw || !hw.gpu) return 'what this computer can run on a graphics card'
+  return hw.vram_gb ? `your graphics card's ${hw.vram_gb} GB` : `your graphics memory`
+}
+
 /** One dropdown for the local model, with what each choice means and whether it's downloaded. */
 function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string) => void; busy: boolean }) {
   const current = ai.models.find((m) => m.id === ai.model)
   const unknownCurrent = ai.model && !current
   const installed = isInstalled(ai.installed, ai.model ?? '')
+  const recommended = ai.models.find((m) => m.recommended)
   return (
     <div className="mt-5">
       <label htmlFor="ai-model" className="text-[13px] font-semibold">
@@ -70,8 +76,9 @@ function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string
           return (
             <option key={m.id} value={m.id}>
               {m.label}
-              {m.recommended ? ' · recommended' : ''}
+              {m.recommended ? ' · recommended for this computer' : ''}
               {m.size_gb ? ` · ${m.size_gb} GB` : ''}
+              {m.fits === false ? ' · slow here' : ''}
               {have === false ? ' · not downloaded' : ''}
             </option>
           )
@@ -81,6 +88,13 @@ function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string
         <p className="mt-2 max-w-[520px] text-[12.5px] text-muted" data-testid="ai-model-hint">
           {current.hint}
           {current.think ? ' It thinks before answering, so each reading takes longer but is more careful.' : ''}
+        </p>
+      )}
+      {current?.fits === false && (
+        <p className="mt-2 max-w-[520px] text-[12.5px]" data-testid="ai-model-fit">
+          This model is bigger than {gpuText(ai.hardware)}, so most of it runs on the processor and
+          each reading is slow.
+          {recommended && recommended.id !== current.id ? ` ${recommended.label} suits this computer better.` : ''}
         </p>
       )}
       {installed === false && (

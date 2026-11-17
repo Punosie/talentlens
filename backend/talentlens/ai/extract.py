@@ -53,8 +53,8 @@ CV_SYSTEM = (
     "- skills: up to 25 concrete hard skills, tools, technologies or functional competencies, "
     "most important first; short canonical names (e.g. 'Python', 'SAP FICO', 'Key Account "
     "Management'). No soft-skill fluff.\n"
-    "- domains: up to 4 industries the candidate has worked in (e.g. 'Telecommunications', "
-    "'Banking & Financial Services', 'Retail').\n"
+    "- domains: up to 4 industries the candidate has actually worked in, only when the resume "
+    "names them (an employer's sector, or the products and clients described); [] if unclear.\n"
     "- education: up to 3 highest degrees, short.\n"
     "- summary: a neutral 1-2 sentence professional summary, max 40 words.\n"
     "Never invent facts that are not in the resume."
@@ -103,7 +103,8 @@ CV_SYSTEM_COMPACT = (
     "- total_years_experience: number. If the resume states a total ('15+ years of experience') "
     "use it. Otherwise count from the earliest job start date to the latest end date (or today). "
     "Ignore education dates. 0 if unknown.\n"
-    "- domains: up to 3 industries (e.g. 'Telecommunications', 'Banking', 'Retail').\n"
+    "- domains: up to 3 industries the candidate worked in, only when the text names them "
+    "(an employer's sector, or the products and clients described); [] if unclear.\n"
     "- summary: one neutral sentence, max 25 words.\n"
     "Never invent facts."
 )
@@ -146,13 +147,29 @@ def _str_list(v: Any) -> list[str]:
     return [s for s in (_s(x) for x in v) if s]
 
 
-def merge(rule: CVFields, llm_json: dict[str, Any] | None) -> CVFields:
-    """Combine rule-based fields with the LLM's JSON. Deterministic, so it is safe to re-run."""
+def grounded_domains(raw: list[str], text: str | None, limit: int) -> list[str]:
+    """Canonical industries from an LLM answer, keeping only those the text supports.
+
+    Small models copy industries from a prompt's examples or guess them from a job title, so an
+    LLM industry is kept only when at least one of that industry's keywords appears in the text.
+    Without a text nothing can be checked, and every recognised industry is kept."""
+    dm = taxonomy.domains()
+    support = dm.score(text) if text else None
+    out: list[str] = []
+    for r in raw:
+        d = dm.canonicalize(r)
+        if d and d not in out and (support is None or d in support):
+            out.append(d)
+    return out[:limit]
+
+
+def merge(rule: CVFields, llm_json: dict[str, Any] | None, text: str | None = None) -> CVFields:
+    """Combine rule-based fields with the LLM's JSON. Deterministic, so it is safe to re-run.
+    Given the resume `text`, LLM industries that the text doesn't support are dropped."""
     if not llm_json:
         return rule
     tax = taxonomy.skills()
     gz = taxonomy.gazetteer()
-    dm = taxonomy.domains()
 
     name = _s(llm_json.get("name"))
     if not name or len(name.split()) > 5 or any(ch.isdigit() for ch in name) or "@" in name:
@@ -193,11 +210,7 @@ def merge(rule: CVFields, llm_json: dict[str, Any] | None) -> CVFields:
             seen.add(s.lower())
             skills.append(s)
 
-    domains: list[str] = []
-    for raw in _str_list(llm_json.get("domains")):
-        d = dm.canonicalize(raw)
-        if d and d not in domains:
-            domains.append(d)
+    domains = grounded_domains(_str_list(llm_json.get("domains")), text, 4)
     for d in rule.domains:
         if d not in domains:
             domains.append(d)

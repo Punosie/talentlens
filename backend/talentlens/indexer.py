@@ -91,6 +91,7 @@ class Indexer:
         t0 = time.perf_counter()
         report = IndexReport()
         self.backfill_confidence()
+        self.reground_domains()
         files = self.store.iter_files()
         report.scanned = len(files)
         on_disk = {f.rel_path: f for f in files}
@@ -256,6 +257,41 @@ class Indexer:
             marked = len(ids)
         self.db.set_meta("confidence_v", "1")
         return marked
+
+    DOMAINS_V = "2"
+
+    def reground_domains(self) -> int:
+        """One-time for libraries read by older prompts: re-merge each stored LLM answer with
+        its resume text, which drops industries the text doesn't support (older prompts made
+        small models copy their example industries). No LLM calls; changed rows are re-embedded
+        because industries are part of the embedded text. Returns how many CVs changed."""
+        if self.db.get_meta("domains_v") == self.DOMAINS_V:
+            return 0
+        changed = 0
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, text, filename, llm_json, domains FROM cvs WHERE status='indexed' "
+                "AND source='file' AND llm_json IS NOT NULL AND llm_sha = sha256"
+            ).fetchall()
+        for r in rows:
+            try:
+                fields = self.enricher.extract(
+                    r["text"] or "", r["filename"], json.loads(r["llm_json"])
+                )
+            except Exception:
+                log.warning("Could not re-check industries for %s", r["filename"], exc_info=True)
+                continue
+            if fields.domains == json.loads(r["domains"] or "[]"):
+                continue
+            blob = self._embed(fields, r["text"] or "")
+            with self.db.write() as conn:
+                self._apply_fields(conn, r["id"], fields, blob, r["text"] or "", r["filename"])
+            changed += 1
+        self.db.set_meta("domains_v", self.DOMAINS_V)
+        if changed:
+            log.info("Re-checked industries: %d CVs updated", changed)
+            self._notify()
+        return changed
 
     def pending_llm_count(self) -> int:
         with self.db.connect() as conn:

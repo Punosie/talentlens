@@ -1,6 +1,6 @@
 [project]
 name = "talentlens"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local resume library and JD shortlisting with on-device AI"
 authors = [{ name = "punosie", email = "shubhankar.kaushik2003@gmail.com" }]
 license = "MIT"

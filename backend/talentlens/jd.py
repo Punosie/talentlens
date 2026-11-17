@@ -7,10 +7,11 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .ai import rules, taxonomy
-from .ai.extract import _s, _str_list
+from .ai.extract import _s, _str_list, grounded_domains
 from .ai.llm import LLM
 
 MAX_JD_CHARS = 8000
+MAX_LOCATIONS = 5
 
 _NICE_HDR = re.compile(
     r"(nice[\s\-]to[\s\-]have|good[\s\-]to[\s\-]have|preferred|desirable|desired|bonus|"
@@ -20,6 +21,13 @@ _NICE_HDR = re.compile(
 _MUST_HDR = re.compile(
     r"(must[\s\-]have|must|required|requirements?|mandatory|essential|qualifications?|"
     r"key skills|what you('|’)ll need|you have|skills)",
+    re.I,
+)
+# "Nice to have: Kubernetes, Redis." inside a paragraph: the label covers that sentence only
+_INLINE_LABEL = re.compile(
+    r"\b(must[\s\-]haves?|required|mandatory|essential|nice[\s\-]to[\s\-]haves?|"
+    r"good[\s\-]to[\s\-]haves?|preferred|desirable|bonus)(?:\s+(?:skills|qualifications))?"
+    r"\s*:\s*((?:[^.;\n]|\.(?=\S))*)",
     re.I,
 )
 _RANGE_YEARS = re.compile(r"(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
@@ -73,6 +81,14 @@ def _split_sections(text: str) -> tuple[str, str]:
     mode = "must"
     for line in text.splitlines():
         s = line.strip()
+        if not s:
+            continue
+        for m in list(_INLINE_LABEL.finditer(s)):
+            if not m.group(2).strip():
+                continue  # a bare heading ("Nice to have:"): switches the mode below
+            (nice if _NICE_HDR.search(m.group(1)) else must).append(m.group(2).strip())
+            s = s.replace(m.group(0), " ", 1)
+        s = s.strip()
         if not s:
             continue
         short = len(s) < 60
@@ -165,7 +181,8 @@ JD_SYSTEM = (
     "- nice_to_have_skills: up to 10 preferred but optional skills.\n"
     "- min_years / max_years: required experience range in years; 0 when not stated.\n"
     "- city / country: job location; '' if not stated or fully remote.\n"
-    "- domains: up to 3 industries the role is in (e.g. 'Telecommunications', 'Retail').\n"
+    "- domains: up to 3 industries the role is in, only when the text names them; [] if not "
+    "stated (a job title alone does not say which industry).\n"
     "- summary: one sentence describing the ideal candidate, max 35 words.\n"
     "Do not invent requirements that are not in the text."
 )
@@ -244,7 +261,6 @@ def requirements_from_llm(
     """Normalise an LLM's JSON (old city/country schema or the newer locations list) into
     canonical Requirements."""
     tax = taxonomy.skills()
-    dm = taxonomy.domains()
     gz = taxonomy.gazetteer()
 
     def canon_list(values: list[str], limit: int) -> list[str]:
@@ -256,11 +272,17 @@ def requirements_from_llm(
         return out[:limit]
 
     must = canon_list(_str_list(data.get("must_have_skills")), 12) or base.must_have_skills
-    nice = [
-        s
-        for s in canon_list(_str_list(data.get("nice_to_have_skills")), 10)
-        if s.lower() not in {m.lower() for m in must}
-    ]
+    # skills the JD itself labels optional ("Nice to have: ...") stay optional, even when the
+    # model lists them as essential
+    labelled_nice = {s.lower() for s in base.nice_to_have_skills}
+    moved = [s for s in must if s.lower() in labelled_nice]
+    must = [s for s in must if s.lower() not in labelled_nice] or must
+    nice: list[str] = []
+    for s in [*moved, *canon_list(_str_list(data.get("nice_to_have_skills")), 10)]:
+        low = s.lower()
+        if low not in {m.lower() for m in must} and low not in {n.lower() for n in nice}:
+            nice.append(s)
+    nice = nice[:10]
 
     def num(v: Any) -> float | None:
         try:
@@ -287,12 +309,15 @@ def requirements_from_llm(
     else:
         city, country = gz.normalize(_s(data.get("city")), _s(data.get("country")))
         locations = [x for x in (city,) if x] or ([country] if country else []) or base.locations
+    # the model often keeps only the first of several places ("Bangalore or Pune"): add back
+    # the ones the JD names that it dropped
+    locations = list(locations)
+    for loc in base.locations:
+        if loc not in locations:
+            locations.append(loc)
+    locations = locations[:MAX_LOCATIONS]
 
-    domains: list[str] = []
-    for raw in _str_list(data.get("domains")):
-        d = dm.canonicalize(raw)
-        if d and d not in domains:
-            domains.append(d)
+    domains = grounded_domains(_str_list(data.get("domains")), text, 3)
 
     return Requirements(
         title=_s(data.get("title")) or base.title,
