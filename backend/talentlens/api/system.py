@@ -75,8 +75,8 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "locked": st.settings.llm_locked,
             "paused": bool(st.prefs.get("ai_paused")),
             "model": getattr(st.llm, "model", None),
-            "models": local_models.catalog(hw["budget_gb"]),
-            "recommended_model": local_models.recommend(hw["budget_gb"]),
+            "models": local_models.catalog(hw["budget_gb"], hw["ram_gb"]),
+            "recommended_model": local_models.recommend(hw["budget_gb"], hw["ram_gb"]),
             "hardware": hw,
             "installed": _installed_models(st.settings.ollama_url)
             if st.settings.llm == "ollama"

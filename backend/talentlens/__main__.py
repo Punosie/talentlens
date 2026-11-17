@@ -144,7 +144,8 @@ def _recommend_model() -> int:
     from .ai import models
     from .ai.device import hardware
 
-    print(models.recommend(hardware()["budget_gb"]))
+    hw = hardware()
+    print(models.recommend(hw["budget_gb"], hw.get("ram_gb")))
     return 0
 
 

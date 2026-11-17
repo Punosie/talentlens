@@ -131,26 +131,32 @@ def test_memory_budget() -> None:
 
 
 @pytest.mark.parametrize(
-    ("budget", "model"),
+    ("budget", "ram", "model"),
     [
-        (0.0, "qwen2.5:1.5b-instruct"),  # CPU only
-        (2.0, "qwen2.5:1.5b-instruct"),  # 2 GB MX250: the 3B ran 74% on the CPU at ~2 tok/s
-        (4.0, "qwen2.5:3b-instruct"),
-        (6.0, "qwen3.5:4b-q4_K_M"),
-        (12.0, "qwen3.5:4b-q4_K_M"),
+        # accuracy first: the 3B even when it runs partly on the processor
+        (0.0, 16.0, "qwen2.5:3b-instruct"),  # CPU only
+        (2.0, 15.8, "qwen2.5:3b-instruct"),  # 2 GB MX250 laptop
+        (4.0, None, "qwen2.5:3b-instruct"),
+        # the thinking 4B only where it runs on the graphics card
+        (6.0, 16.0, "qwen3.5:4b-q4_K_M"),
+        (12.0, 32.0, "qwen3.5:4b-q4_K_M"),
+        # the 1.5B only when memory is too short for the 3B
+        (0.0, 4.0, "qwen2.5:1.5b-instruct"),
+        (2.0, 6.0, "qwen2.5:1.5b-instruct"),
     ],
 )
-def test_recommend(budget: float, model: str) -> None:
-    assert models.recommend(budget) == model
+def test_recommend(budget: float, ram: float | None, model: str) -> None:
+    assert models.recommend(budget, ram) == model
     assert model in models.BY_ID
 
 
 def test_catalog_marks_fit_and_one_recommendation() -> None:
-    cat = {m["id"]: m for m in models.catalog(2.0)}
+    cat = {m["id"]: m for m in models.catalog(2.0, 15.8)}
     assert cat["qwen2.5:1.5b-instruct"]["fits"] is True
     assert cat["qwen2.5:3b-instruct"]["fits"] is False
     assert cat["qwen3.5:4b-q4_K_M"]["fits"] is False
-    assert [m for m in cat if cat[m]["recommended"]] == ["qwen2.5:1.5b-instruct"]
+    # accuracy first: the 3B is recommended although it doesn't fit the 2 GB card
+    assert [m for m in cat if cat[m]["recommended"]] == ["qwen2.5:3b-instruct"]
     # CPU only: nothing fits on a graphics card, so fit isn't flagged on every model
     assert {m["fits"] for m in models.catalog(0.0)} == {None}
 
@@ -160,10 +166,10 @@ def test_recommend_model_cli(
 ) -> None:
     from talentlens import __main__ as cli
 
-    monkeypatch.setattr(device, "hardware", lambda: {"budget_gb": 2.0})
+    monkeypatch.setattr(device, "hardware", lambda: {"budget_gb": 2.0, "ram_gb": 15.8})
     with pytest.raises(SystemExit):
         cli.main(["recommend-model"])
-    assert capsys.readouterr().out.strip() == "qwen2.5:1.5b-instruct"
+    assert capsys.readouterr().out.strip() == "qwen2.5:3b-instruct"
 
 
 # --- grounded AI answers ------------------------------------------------------------------
