@@ -21,8 +21,10 @@ _GPU: bool | None = None
 
 
 def gpu_available() -> bool:
-    """True when an NVIDIA GPU can run the models (CUDA build of ONNX Runtime installed and its
-    libraries load). TALENTLENS_DEVICE=cpu turns it off. Checked once per process."""
+    """True when an NVIDIA GPU can run the models: the CUDA build of ONNX Runtime is installed,
+    its libraries load, and the card is new enough for it (see device.MIN_COMPUTE_CAPABILITY).
+    TALENTLENS_DEVICE=cpu turns it off. Checked once per process; a failed GPU load later turns
+    it off too (mark_gpu_unusable)."""
     global _GPU
     if _GPU is None:
         _GPU = False
@@ -31,12 +33,29 @@ def gpu_available() -> bool:
                 import onnxruntime as ort
 
                 if "CUDAExecutionProvider" in ort.get_available_providers():
+                    from .device import cuda_supported, gpu_info
+
+                    info = gpu_info()
+                    if cuda_supported(info) is False:
+                        log.info(
+                            "GPU %s (compute capability %s) is too old for this ONNX Runtime "
+                            "build; running models on the CPU",
+                            info and info.get("name"),
+                            info and info.get("compute_capability"),
+                        )
+                        return False
                     if hasattr(ort, "preload_dlls"):
                         ort.preload_dlls()  # CUDA/cuDNN from the nvidia-* wheels
                     _GPU = True
             except Exception:
                 log.info("GPU not usable; running models on the CPU", exc_info=True)
     return _GPU
+
+
+def mark_gpu_unusable() -> None:
+    """A model failed to load on the GPU: use the CPU for the rest of this process, and say so."""
+    global _GPU
+    _GPU = False
 
 
 def _load(cls: Any, model_name: str, cache_dir: Path, extra: dict[str, Any]) -> Any:
@@ -59,6 +78,7 @@ def load_cached_first(cls: Any, model_name: str, cache_dir: Path, device: str | 
             return model
         except Exception:
             log.warning("Could not load %s on the GPU; using the CPU", model_name, exc_info=True)
+            mark_gpu_unusable()
     # explicit CPU: fastembed's default (cuda=AUTO) would pick CUDA whenever the CUDA build of
     # ONNX Runtime is installed, even when its libraries were not loaded or the user chose CPU
     return _load(cls, model_name, cache_dir, {"cuda": False, "providers": ["CPUExecutionProvider"]})

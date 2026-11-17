@@ -153,7 +153,19 @@ export type AppSettings = {
     locked: boolean
     paused: boolean
     model: string | null
-    models: { id: string; label: string; hint: string; size_gb?: number; think?: boolean | null; recommended?: boolean }[]
+    models: {
+      id: string
+      label: string
+      hint: string
+      size_gb?: number
+      think?: boolean | null
+      /** the pick for this computer's hardware */
+      recommended?: boolean
+      /** runs fully on this computer's graphics memory; null when unknown */
+      fits?: boolean | null
+    }[]
+    recommended_model?: string
+    hardware?: { gpu: string | null; vram_gb: number | null; ram_gb: number | null; budget_gb: number }
     /** Tags already pulled into Ollama; null when Ollama isn't reachable */
     installed?: string[] | null
     mode: string
@@ -169,7 +181,14 @@ export type AppSettings = {
   device?: {
     active: 'cpu' | 'cuda'
     model: string | null
-    benchmark: { cpu_per_s?: number | null; cuda_per_s?: number | null; gpu_name?: string | null; choice?: string } | null
+    benchmark: {
+      cpu_per_s?: number | null
+      cuda_per_s?: number | null
+      gpu_name?: string | null
+      compute_capability?: string | null
+      cuda_error?: string | null
+      choice?: string
+    } | null
   }
 }
 

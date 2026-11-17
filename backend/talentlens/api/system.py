@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..ai import models as local_models
+from ..ai.device import hardware
+from ..ai.embed import gpu_available
 from ..library import FolderProblem, count_resumes, validate_folder
 from ..state import AppState
 from . import get_state
@@ -51,6 +53,7 @@ class FolderCheck(BaseModel):
 
 
 def settings_payload(st: AppState) -> dict[str, Any]:
+    hw = hardware()
     lib = st.library
     folder = lib.folder if lib else None
     return {
@@ -72,14 +75,17 @@ def settings_payload(st: AppState) -> dict[str, Any]:
             "locked": st.settings.llm_locked,
             "paused": bool(st.prefs.get("ai_paused")),
             "model": getattr(st.llm, "model", None),
-            "models": AI_MODELS,
+            "models": local_models.catalog(hw["budget_gb"]),
+            "recommended_model": local_models.recommend(hw["budget_gb"]),
+            "hardware": hw,
             "installed": _installed_models(st.settings.ollama_url)
             if st.settings.llm == "ollama"
             else None,
             **st.llm.status(),
         },
         "device": {
-            "active": st.extras.get("device", "cpu"),
+            # what actually runs: a GPU that failed to load the models counts as the CPU
+            "active": "cuda" if st.extras.get("device") == "cuda" and gpu_available() else "cpu",
             "model": getattr(st.embedder, "model_name", None),
             "benchmark": st.prefs.get("device_benchmark"),
         },

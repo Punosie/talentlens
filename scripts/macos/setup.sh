@@ -98,7 +98,10 @@ ok "UI built"
 
 # --- 5. local AI model -------------------------------------------------------------
 if [[ $NO_AI -eq 0 ]]; then
-  step "Downloading the local AI model ($MODEL, about 2 GB, first time only)"
+  # the model that suits this computer's memory (falls back to the default above)
+  PICKED="$(uv run --frozen talentlens recommend-model 2>/dev/null | tail -n 1 || true)"
+  [[ -n "$PICKED" ]] && MODEL="$PICKED"
+  step "Downloading the local AI model ($MODEL, 1-3 GB, first time only)"
   # run Ollama in the background now and at every login
   brew services start ollama >/dev/null 2>&1 || (nohup ollama serve >/dev/null 2>&1 &)
   for _ in $(seq 1 30); do
@@ -106,6 +109,7 @@ if [[ $NO_AI -eq 0 ]]; then
     sleep 1
   done
   ollama pull "$MODEL"
+  uv run --frozen talentlens set-model "$MODEL"
   ok "$MODEL ready"
 fi
 step "Measuring this computer's speed (picks the faster settings)"

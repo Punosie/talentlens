@@ -5,7 +5,8 @@ uv run talentlens open            start it if needed, then open the browser
 uv run talentlens set-folder PATH remember the resume folder (same as choosing it in the app)
 uv run talentlens set-model ID    choose the local AI model (e.g. qwen2.5:1.5b-instruct)
 uv run talentlens set-ai on|off   turn the local AI on or off
-uv run talentlens benchmark       measure CPU vs GPU and use the faster
+uv run talentlens benchmark       measure CPU vs GPU and use the faster (--if-needed: once)
+uv run talentlens recommend-model print the local AI model that suits this computer
 uv run talentlens join LINK       connect to your team with an invite link
 uv run talentlens set-device auto|cpu|cuda
 """
@@ -111,23 +112,39 @@ def _set_ai(value: str) -> int:
     return 0
 
 
-def _benchmark() -> int:
-    """Measure CPU (and NVIDIA GPU, if present) on real embedding work; save the faster."""
-    from .ai.device import PROFILES, benchmark
+def _benchmark(if_needed: bool = False) -> int:
+    """Measure CPU (and NVIDIA GPU, if present) on real embedding work; save the faster.
+    if_needed: only when nothing usable is saved yet (used by the updaters)."""
+    from .ai.device import PROFILES, benchmark, needs_benchmark
     from .settings_store import SettingsStore
 
     s = get_settings()
     s.ensure_dirs()
+    store = SettingsStore(s.settings_path)
+    if if_needed and not needs_benchmark(store.get("device_benchmark")):
+        print("CPU/GPU choice already measured on this computer.")
+        return 0
     print("Measuring how fast this computer reads resumes and profiles...")
     r = benchmark(s.model_cache_dir)
     cpu, gpu = r.get("cpu_per_s"), r.get("cuda_per_s")
     print(f"  CPU: {cpu or 'failed'} per second ({PROFILES['cpu'].model})")
     if gpu or r.get("cuda_error"):
-        print(f"  GPU: {gpu or 'failed'} per second ({r.get('gpu_name') or 'NVIDIA'})")
+        print(f"  GPU: {gpu or 'not usable'} per second ({r.get('gpu_name') or 'NVIDIA'})")
+        if not gpu and r.get("cuda_error"):
+            print(f"       {r['cuda_error'][:160]}")
     else:
         print("  GPU: none found (that's fine)")
-    SettingsStore(s.settings_path).update(device=r["choice"], device_benchmark=r)
+    store.update(device=r["choice"], device_benchmark=r)
     print(f"Using the {'GPU' if r['choice'] == 'cuda' else 'CPU'}. Saved in TalentLens settings.")
+    return 0
+
+
+def _recommend_model() -> int:
+    """Print the local model that suits this computer (used by the setup scripts)."""
+    from .ai import models
+    from .ai.device import hardware
+
+    print(models.recommend(hardware()["budget_gb"]))
     return 0
 
 
@@ -172,7 +189,13 @@ def main(argv: list[str] | None = None) -> None:
     m.add_argument("model")
     a = sub.add_parser("set-ai", help="turn the local AI on or off")
     a.add_argument("value", choices=["on", "off"])
-    sub.add_parser("benchmark", help="measure CPU vs GPU and save the faster")
+    b = sub.add_parser("benchmark", help="measure CPU vs GPU and save the faster")
+    b.add_argument(
+        "--if-needed",
+        action="store_true",
+        help="only when no usable result is saved yet (used by the updaters)",
+    )
+    sub.add_parser("recommend-model", help="print the local AI model that suits this computer")
     j = sub.add_parser("join", help="connect to your team with an invite link")
     j.add_argument("link")
     d = sub.add_parser("set-device", help="run the models on the cpu, the cuda GPU, or auto")
@@ -181,7 +204,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "join":
         sys.exit(_join(args.link))
     if args.cmd == "benchmark":
-        sys.exit(_benchmark())
+        sys.exit(_benchmark(args.if_needed))
+    if args.cmd == "recommend-model":
+        sys.exit(_recommend_model())
     if args.cmd == "set-device":
         sys.exit(_set_device(args.value))
     if args.cmd == "set-ai":

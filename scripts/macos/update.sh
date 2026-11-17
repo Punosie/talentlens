@@ -65,6 +65,11 @@ git merge --ff-only "origin/$BRANCH" || fail "git merge failed"
 set_status updating "Installing components"
 uv sync --frozen || fail "uv sync failed"
 
+# Installs updated in-app never ran the install-time speed test. Measures only when needed;
+# a failure never stops the update.
+set_status updating "Checking CPU and GPU speed"
+uv run --frozen talentlens benchmark --if-needed || echo "Benchmark skipped"
+
 set_status updating "Building the screens"
 (
   cd frontend || exit 1

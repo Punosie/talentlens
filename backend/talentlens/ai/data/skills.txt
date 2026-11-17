@@ -588,7 +588,7 @@ Chartered Accountant | =ACA | =ACCA | =ICAI | =CA Inter
 
 # --- HR / people
 Human Resources | hr management | human resource management | =HR
-Talent Acquisition | recruitment | recruiting | hiring
+Talent Acquisition | recruitment | recruiting
 Executive Search | headhunting
 Onboarding
 Employee Relations

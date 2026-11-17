@@ -190,11 +190,14 @@ def test_ai_toggle_and_model(tmp_path: Path, no_discovery: None) -> None:
         assert "qwen3.5:4b-q4_K_M" in ids and "qwen2.5:3b-instruct" in ids
         assert sum(m["recommended"] for m in on["ai"]["models"]) == 1
         assert on["ai"]["installed"] is None
+        assert on["ai"]["recommended_model"] in ids
+        assert set(on["ai"]["hardware"]) >= {"gpu", "vram_gb", "ram_gb", "budget_gb"}
+        assert all("fits" in m for m in on["ai"]["models"])
         assert c.put("/api/settings", json={"ollama_model": "evil"}).status_code == 400
-        # the retired 1.5B model is no longer offered
+        # the 1.5B is back as the low-memory choice (2 GB graphics cards, CPU-only laptops)
         assert (
             c.put("/api/settings", json={"ollama_model": "qwen2.5:1.5b-instruct"}).status_code
-            == 400
+            == 200
         )
 
 

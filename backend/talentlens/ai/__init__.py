@@ -23,7 +23,7 @@ class AIEnricher:
         self.embed_chars = getattr(embedder, "text_chars", 6000)
 
     def extract(self, text: str, filename: str, llm_json: dict[str, Any] | None = None) -> CVFields:
-        return _extract.merge(rules.extract(text, filename), llm_json)
+        return _extract.merge(rules.extract(text, filename), llm_json, text)
 
     def embed_documents(self, texts: list[str]) -> np.ndarray | None:
         return self.embedder.embed_documents(texts)
