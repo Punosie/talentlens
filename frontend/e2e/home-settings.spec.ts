@@ -35,35 +35,43 @@ test.describe('home, settings and help', () => {
     await expect(page.locator('html')).not.toHaveClass(/dark/)
   })
 
-  test('settings: model picker recommends for this computer and warns when a model is too big', async ({ page }) => {
-    // a 2 GB laptop graphics card (GeForce MX250) still running the larger default model
+  test('settings: model picker recommends the most accurate model that works here', async ({ page }) => {
+    // a 2 GB laptop graphics card (GeForce MX250): accuracy first, so the 3B is recommended even
+    // though part of it runs on the processor
+    let current = 'qwen2.5:3b-instruct'
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() !== 'GET') return route.continue()
       const res = await route.fetch()
       const body = await res.json()
       const models = [
         { id: 'qwen3.5:4b-q4_K_M', label: 'Qwen 3.5 4B (thinking)', hint: 'Careful.', size_gb: 3.3, think: true, recommended: false, fits: false },
-        { id: 'qwen2.5:3b-instruct', label: 'Qwen 2.5 3B', hint: 'Quick and small.', size_gb: 1.9, think: null, recommended: false, fits: false },
-        { id: 'qwen2.5:1.5b-instruct', label: 'Qwen 2.5 1.5B (low memory)', hint: 'For small cards.', size_gb: 1, think: null, recommended: true, fits: true },
+        { id: 'qwen2.5:3b-instruct', label: 'Qwen 2.5 3B', hint: 'Quick and small.', size_gb: 1.9, think: null, recommended: true, fits: false },
+        { id: 'qwen2.5:1.5b-instruct', label: 'Qwen 2.5 1.5B (low memory)', hint: 'Fastest.', size_gb: 1, think: null, recommended: false, fits: true },
       ]
       body.ai = {
         ...body.ai,
         enabled: true,
         locked: false,
-        model: 'qwen2.5:3b-instruct',
+        model: current,
         models,
         installed: models.map((m) => m.id),
-        recommended_model: 'qwen2.5:1.5b-instruct',
+        recommended_model: 'qwen2.5:3b-instruct',
         hardware: { gpu: 'NVIDIA GeForce MX250', vram_gb: 2, ram_gb: 15.8, budget_gb: 2 },
       }
       await route.fulfill({ response: res, json: body })
     })
     await page.goto('/settings')
     const select = page.getByTestId('ai-model-select')
-    await expect(select.locator('option', { hasText: '1.5B' })).toHaveText(/recommended for this computer/)
-    await expect(select.locator('option', { hasText: 'Qwen 2.5 3B' })).toHaveText(/slow here/)
-    await expect(page.getByTestId('ai-model-fit')).toContainText("your graphics card's 2 GB")
-    await expect(page.getByTestId('ai-model-fit')).toContainText('Qwen 2.5 1.5B (low memory) suits this computer better')
+    await expect(select.locator('option', { hasText: 'Qwen 2.5 3B' })).toHaveText(/recommended for this computer.*slower here/)
+    await expect(select.locator('option', { hasText: '1.5B' })).not.toHaveText(/recommended/)
+    const fit = page.getByTestId('ai-model-fit')
+    await expect(fit).toContainText("your graphics card's 2 GB")
+    await expect(fit).toContainText('still the most accurate choice')
+
+    // a model that is both too big and not the pick points to the recommended one
+    current = 'qwen3.5:4b-q4_K_M'
+    await page.reload()
+    await expect(fit).toContainText('Qwen 2.5 3B is the most accurate choice that works well on this computer')
   })
 
   test('help answers and the welcome guide can be reopened', async ({ page }) => {

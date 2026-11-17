@@ -78,7 +78,7 @@ function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string
               {m.label}
               {m.recommended ? ' · recommended for this computer' : ''}
               {m.size_gb ? ` · ${m.size_gb} GB` : ''}
-              {m.fits === false ? ' · slow here' : ''}
+              {m.fits === false ? ' · slower here' : ''}
               {have === false ? ' · not downloaded' : ''}
             </option>
           )
@@ -92,9 +92,13 @@ function ModelPicker({ ai, onPick, busy }: { ai: AiSettings; onPick: (id: string
       )}
       {current?.fits === false && (
         <p className="mt-2 max-w-[520px] text-[12.5px]" data-testid="ai-model-fit">
-          This model is bigger than {gpuText(ai.hardware)}, so most of it runs on the processor and
-          each reading is slow.
-          {recommended && recommended.id !== current.id ? ` ${recommended.label} suits this computer better.` : ''}
+          This model is bigger than {gpuText(ai.hardware)}, so part of it runs on the processor and
+          each reading takes longer.
+          {current.recommended
+            ? ' It is still the most accurate choice that works well on this computer.'
+            : recommended && recommended.id !== current.id
+              ? ` ${recommended.label} is the most accurate choice that works well on this computer.`
+              : ''}
         </p>
       )}
       {installed === false && (

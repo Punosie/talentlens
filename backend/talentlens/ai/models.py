@@ -9,7 +9,12 @@ Picked for structured JSON + reasoning on a laptop GPU (about 6 GB VRAM), short 
 
 Not every computer has 6 GB: on a 2 GB GeForce MX250 laptop qwen2.5:3b ran 74% on the CPU at about
 2 tokens/s, while qwen2.5:1.5b fit the card at about 14 tokens/s. So each model states the memory it
-needs to run fully on the graphics card (`min_vram_gb`), and `recommend()` picks per computer.
+needs to run fully on the graphics card (`min_vram_gb`), and Settings says when one won't fit.
+
+`recommend()` puts accuracy first: the most accurate model that still finishes each reading in
+reasonable time on this computer, even if it runs partly on the processor. Speed only decides when
+a better model can't work at all (a thinking model without a big enough graphics card, or too
+little memory for the 3B).
 """
 
 from __future__ import annotations
@@ -88,8 +93,8 @@ MODELS: list[LocalModel] = [
     LocalModel(
         "qwen2.5:1.5b-instruct",
         "Qwen 2.5 1.5B (low memory)",
-        "For laptops with a small graphics card (2 GB) or none: several times faster there than "
-        "the larger models, with simpler answers.",
+        "Fastest on small laptops, but the least accurate: misreads more titles, years and "
+        "requirements. For computers with under 8 GB of memory, or when speed matters most.",
         1.0,
         think=None,
         num_ctx=2048,
@@ -97,12 +102,11 @@ MODELS: list[LocalModel] = [
     ),
 ]
 
-# What each kind of computer gets, best first: (memory budget in GB, model)
-_TIERS: list[tuple[float, str]] = [
-    (4.5, "qwen3.5:4b-q4_K_M"),
-    (2.6, "qwen2.5:3b-instruct"),
-    (0.0, "qwen2.5:1.5b-instruct"),
-]
+# Accuracy first. The 4B thinks for up to THINK_BUDGET tokens per answer, which only finishes
+# in time when it runs on the graphics card; the 3B answers directly, so it is fine partly on the
+# processor (about a minute per resume on a 2 GB laptop card). The 1.5B is for very low memory.
+THINKING_MIN_GPU_GB = 4.5
+SMALL_MODEL_BELOW_RAM_GB = 8.0
 
 BY_ID = {m.id: m for m in MODELS}
 
@@ -111,14 +115,15 @@ def get(model_id: str | None) -> LocalModel | None:
     return BY_ID.get(model_id or "")
 
 
-def recommend(budget_gb: float | None) -> str:
-    """The model for a computer whose AI memory budget is `budget_gb` (graphics memory, or the
-    usable share of unified memory on Apple silicon; 0 or None = CPU only)."""
-    budget = budget_gb or 0.0
-    for need, model_id in _TIERS:
-        if budget >= need:
-            return model_id
-    return _TIERS[-1][1]
+def recommend(budget_gb: float | None, ram_gb: float | None = None) -> str:
+    """The most accurate model that works well enough on this computer. `budget_gb` is graphics
+    memory (or the usable share of unified memory on Apple silicon; 0/None = CPU only) and
+    `ram_gb` the installed memory (None = unknown, assumed enough)."""
+    if (budget_gb or 0.0) >= THINKING_MIN_GPU_GB:
+        return "qwen3.5:4b-q4_K_M"
+    if ram_gb is not None and ram_gb < SMALL_MODEL_BELOW_RAM_GB:
+        return "qwen2.5:1.5b-instruct"
+    return "qwen2.5:3b-instruct"
 
 
 def fits(model: LocalModel, budget_gb: float | None) -> bool | None:
@@ -129,10 +134,10 @@ def fits(model: LocalModel, budget_gb: float | None) -> bool | None:
     return model.min_vram_gb <= budget_gb
 
 
-def catalog(budget_gb: float | None) -> list[dict[str, Any]]:
+def catalog(budget_gb: float | None, ram_gb: float | None = None) -> list[dict[str, Any]]:
     """The model list for Settings, marked for this computer: `recommended` is the pick for this
     hardware (not the reference laptop) and `fits` says whether it runs fully on the GPU."""
-    pick = recommend(budget_gb)
+    pick = recommend(budget_gb, ram_gb)
     return [
         {**m.as_dict(), "recommended": m.id == pick, "fits": fits(m, budget_gb)} for m in MODELS
     ]
